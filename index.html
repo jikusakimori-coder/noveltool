@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1a18" media="(prefers-color-scheme: dark)">
+<title>小説執筆ノート</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-view="edit">
+
+<header class="topbar">
+  <button id="menuBtn" class="icon-btn only-narrow" type="button" aria-label="作品一覧を開く">☰</button>
+  <div class="crumb" id="crumb"></div>
+  <div class="counts" id="counts" aria-live="polite"></div>
+  <span class="save-status" id="saveStatus"></span>
+</header>
+
+<div class="layout">
+  <aside id="sidebar" class="sidebar" aria-label="作品と話の一覧">
+    <div class="side-head">
+      <h2>作品</h2>
+      <button id="addWork" class="btn small" type="button">＋ 新しい作品</button>
+    </div>
+    <ul id="workList" class="works"></ul>
+    <div class="side-foot">
+      <button id="exportAll" class="btn" type="button">全原稿を書き出し</button>
+      <button id="importBtn" class="btn" type="button">テキストを読み込み</button>
+      <input id="importFile" type="file" accept=".txt,text/plain" hidden>
+      <p class="note">原稿はこのブラウザ内に自動保存されます。機種変更やブラウザのデータ削除に備えて、ときどき書き出してください。</p>
+    </div>
+  </aside>
+  <div id="scrim" class="scrim"></div>
+
+  <main class="main">
+    <section id="empty" class="empty" hidden>
+      <p id="emptyMsg"></p>
+      <button id="emptyAction" class="btn primary" type="button"></button>
+    </section>
+
+    <section id="workspace" class="workspace">
+      <div class="ep-head">
+        <input id="epTitle" class="ep-title" type="text" placeholder="話のタイトル" aria-label="話のタイトル">
+        <div class="ep-actions">
+          <button id="epUp" class="icon-btn" type="button" title="前へ移動" aria-label="前へ移動">↑</button>
+          <button id="epDown" class="icon-btn" type="button" title="後ろへ移動" aria-label="後ろへ移動">↓</button>
+          <button id="epCopy" class="icon-btn" type="button" title="本文をコピー" aria-label="本文をコピー">⧉</button>
+          <button id="epDelete" class="icon-btn danger" type="button" title="この話を削除" aria-label="この話を削除">✕</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="seg" role="tablist" aria-label="表示">
+          <button type="button" data-view="edit">執筆</button>
+          <button type="button" data-view="preview">プレビュー</button>
+          <button type="button" data-view="split" class="only-wide">並べて</button>
+        </div>
+        <div class="tool-edit">
+          <button id="insRuby" class="btn small" type="button" title="選択した文字にルビ ｜漢字《かんじ》">ルビ</button>
+          <button id="insBouten" class="btn small" type="button" title="選択した文字に傍点 《《強調》》">傍点</button>
+        </div>
+        <div class="tool-preview">
+          <div class="seg" aria-label="組み方向">
+            <button type="button" data-dir="h">横</button>
+            <button type="button" data-dir="v">縦</button>
+          </div>
+          <button id="fontDown" class="icon-btn" type="button" aria-label="文字を小さく">A−</button>
+          <button id="fontUp" class="icon-btn" type="button" aria-label="文字を大きく">A＋</button>
+        </div>
+      </div>
+
+      <div class="panes">
+        <textarea id="editor" class="editor" spellcheck="false" autocomplete="off"
+          placeholder="ここに本文を書きます。&#10;&#10;ルビ：｜漢字《かんじ》　または　漢字《かんじ》&#10;傍点：《《強調したい文字》》&#10;《》をそのまま表示：｜《"></textarea>
+        <div id="preview" class="preview" tabindex="0" aria-label="プレビュー"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="importDialog" class="dialog">
+  <form method="dialog">
+    <h3>テキストの読み込み</h3>
+    <p id="importMsg"></p>
+    <p class="note">「すべて置き換え」を選ぶと、いまある原稿は消えます。心配なときは先に書き出しておいてください。</p>
+    <div class="dialog-actions">
+      <button value="cancel" class="btn">キャンセル</button>
+      <button value="replace" class="btn danger">すべて置き換え</button>
+      <button value="append" class="btn primary">追加する</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
