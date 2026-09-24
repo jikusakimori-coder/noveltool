@@ -15,7 +15,13 @@
   <div class="crumb" id="crumb"></div>
   <div class="counts" id="counts" aria-live="polite"></div>
   <span class="save-status" id="saveStatus"></span>
+  <button id="refsToggle" class="btn small only-wide" type="button" aria-pressed="true" title="資料パネルの表示／非表示">資料</button>
 </header>
+
+<nav class="mtabs" aria-label="表示の切り替え">
+  <button type="button" data-mtab="write">原稿</button>
+  <button type="button" data-mtab="refs">資料</button>
+</nav>
 
 <div class="layout">
   <aside id="sidebar" class="sidebar" aria-label="作品と話の一覧">
@@ -33,6 +39,7 @@
   </aside>
   <div id="scrim" class="scrim"></div>
 
+  <div id="content" class="content">
   <main class="main">
     <section id="empty" class="empty" hidden>
       <p id="emptyMsg"></p>
@@ -77,6 +84,24 @@
       </div>
     </section>
   </main>
+
+  <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="原稿と資料の境目（ドラッグで幅を変更）" tabindex="0"></div>
+
+  <section id="refs" class="refs" aria-label="資料">
+    <div class="refs-head">
+      <button id="refListBtn" class="refs-current" type="button" aria-expanded="false" title="資料の一覧">
+        <span id="refName" class="name">資料</span><span class="caret">▾</span>
+      </button>
+      <button id="refTocBtn" class="btn small" type="button" aria-pressed="false">目次</button>
+      <button id="refAdd" class="btn small" type="button" title="MDファイルを読み込み">＋ 読み込み</button>
+      <button id="refsClose" class="icon-btn only-wide" type="button" title="資料パネルを隠す" aria-label="資料パネルを隠す">✕</button>
+      <input id="refFile" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden>
+    </div>
+    <div id="refList" class="ref-list" hidden></div>
+    <nav id="refToc" class="ref-toc" hidden aria-label="目次"></nav>
+    <div id="refBody" class="ref-body md" tabindex="0"></div>
+  </section>
+  </div>
 </div>
 
 <dialog id="importDialog" class="dialog">
@@ -93,5 +118,6 @@
 </dialog>
 
 <script src="app.js"></script>
+<script src="refs.js"></script>
 </body>
 </html>
