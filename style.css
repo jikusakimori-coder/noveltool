@@ -91,7 +91,6 @@ button { cursor: pointer; }
   min-height: 48px;
   flex: none;
 }
-.crumb { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
 .counts { display: flex; gap: 14px; font-size: 13px; color: var(--muted); white-space: nowrap; }
 .counts b { color: var(--text); font-variant-numeric: tabular-nums; font-size: 15px; }
 .save-status { font-size: 12px; color: var(--muted); white-space: nowrap; }
@@ -108,13 +107,58 @@ button { cursor: pointer; }
   flex-direction: column;
   overflow-y: auto;
 }
-.side-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 8px; }
-.side-head h2 { font-size: 13px; color: var(--muted); margin: 0; font-weight: 600; }
 .side-foot { margin-top: auto; padding: 12px; display: grid; gap: 8px; border-top: 1px solid var(--line); padding-bottom: max(12px, env(safe-area-inset-bottom)); }
 .note { font-size: 12px; color: var(--muted); margin: 4px 0 0; line-height: 1.6; }
 
-.works { list-style: none; margin: 0; padding: 0 8px 12px; }
-.work { margin-bottom: 2px; }
+/* 作品タブ */
+.work-tabs {
+  flex: 1; min-width: 0;
+  display: flex; align-items: flex-end; gap: 2px;
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: thin;
+  align-self: stretch;
+  margin-bottom: -7px;
+}
+.wtab {
+  flex: none;
+  max-width: 14em;
+  padding: 8px 14px;
+  border: 1px solid transparent; border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 14px;
+}
+.wtab:hover { color: var(--text); background: var(--panel-2); }
+.wtab.current {
+  color: var(--text); font-weight: 600;
+  background: var(--bg);
+  border-color: var(--line);
+  position: relative;
+}
+.wtab.current::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--bg); }
+.wtab-add {
+  flex: none; align-self: center;
+  border: 0; background: transparent; color: var(--muted);
+  font-size: 18px; min-width: 34px; min-height: 34px; border-radius: 8px;
+  margin-bottom: 6px;
+}
+.wtab-add:hover { background: var(--panel-2); color: var(--text); }
+
+/* サイドバー（開いている作品の話） */
+.side-work { padding: 12px 12px 4px; }
+.side-work-title { display: flex; align-items: baseline; gap: 8px; }
+.side-work-title h2 { flex: 1; min-width: 0; margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.side-work-title .cnt { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.work-actions { display: flex; gap: 2px; flex-wrap: wrap; margin: 6px 0 0 -6px; }
+.work-actions button { border: 0; background: transparent; color: var(--muted); font-size: 12px; padding: 4px 6px; border-radius: 6px; }
+.work-actions button:hover { background: var(--panel-2); color: var(--text); }
+.work-actions button.danger:hover { color: var(--danger); }
+.eps { list-style: none; margin: 0; padding: 4px 8px 0; }
+.add-ep { display: block; margin: 2px 8px 12px; border: 0; background: transparent; color: var(--accent); font-size: 13px; padding: 6px 8px; border-radius: 6px; text-align: left; }
+.add-ep:hover { background: var(--panel-2); }
+
 .row-btn {
   display: flex; align-items: center; gap: 8px;
   width: 100%;
@@ -124,20 +168,9 @@ button { cursor: pointer; }
 .row-btn:hover { background: var(--panel-2); }
 .row-btn .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-btn .cnt { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.work-title { font-weight: 600; }
-.chev { display: inline-block; width: 1em; color: var(--muted); transition: transform .15s; }
-.work.open .chev { transform: rotate(90deg); }
-.work-actions { display: none; gap: 4px; padding: 0 8px 6px 28px; flex-wrap: wrap; }
-.work.open .work-actions { display: flex; }
-.work-actions button { border: 0; background: transparent; color: var(--muted); font-size: 12px; padding: 4px 6px; border-radius: 6px; }
-.work-actions button:hover { background: var(--panel-2); color: var(--text); }
-.work-actions button.danger:hover { color: var(--danger); }
-.eps { list-style: none; margin: 0; padding: 0 0 0 20px; display: none; }
-.work.open .eps, .work.open .add-ep { display: block; }
 .ep .no { color: var(--muted); font-size: 12px; min-width: 1.6em; font-variant-numeric: tabular-nums; }
 .ep.current { background: var(--accent-soft); }
 .ep.current .name { font-weight: 600; }
-.add-ep { display: none; margin: 2px 0 8px 28px; border: 0; background: transparent; color: var(--accent); font-size: 13px; padding: 6px 8px; border-radius: 6px; }
 .add-ep:hover { background: var(--panel-2); }
 
 .scrim { display: none; }
@@ -335,6 +368,56 @@ body[data-refs="closed"] .refs, body[data-refs="closed"] .splitter { display: no
 .md .bouten { font-style: normal; -webkit-text-emphasis: filled sesame; text-emphasis: filled sesame; }
 .md .md-img { color: var(--muted); font-size: .9em; }
 
+
+/* 読み込み中 */
+body.loading .layout, body.loading .work-tabs { visibility: hidden; }
+
+/* 編集の占有 */
+.lock-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0 12px 8px; padding: 8px 12px;
+  border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: 8px; background: var(--accent-soft);
+  font-size: 13px;
+}
+.lock-banner span { flex: 1; min-width: 12em; }
+.editor[readonly] { color: var(--muted); }
+.btn:disabled { opacity: .45; cursor: default; }
+
+/* 資料一覧 */
+.refs { position: relative; }
+.ref-tools { display: flex; gap: 6px; flex-wrap: wrap; padding: 2px 4px 8px; }
+.ref-bulk { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 4px; border-top: 1px solid var(--line); }
+.ref-bulk label { font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.ref-list li { padding-left: 6px; }
+.ref-check, .ref-bulk input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; margin: 0; }
+.ref-delete-all { margin: 8px 4px 0; }
+.btn.danger:not(:disabled):hover { border-color: var(--danger); }
+.ref-empty-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.drop-hint {
+  display: none;
+  position: absolute; inset: 8px;
+  align-items: center; justify-content: center; text-align: center;
+  border: 2px dashed var(--accent); border-radius: 12px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  color: var(--accent); font-weight: 600; padding: 16px;
+  pointer-events: none; z-index: 5;
+}
+.refs.dropping { outline: none; }
+.refs.dropping .drop-hint { display: flex; }
+
+/* 読み込みダイアログ */
+.import-list { list-style: none; margin: 8px 0; padding: 0; max-height: 40vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+.import-list li + li { border-top: 1px solid var(--line); }
+.import-list label { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; cursor: pointer; }
+.import-list input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--accent); }
+.import-list span { display: flex; flex-direction: column; min-width: 0; }
+.import-list small { color: var(--muted); font-size: 12px; }
+.import-list em { color: var(--danger); font-style: normal; }
+.import-mode { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0 0; padding: 6px 10px 8px; font-size: 13px; display: grid; gap: 6px; }
+.import-mode legend { color: var(--muted); padding: 0 4px; }
+.import-mode label { display: flex; gap: 6px; align-items: flex-start; }
+
 /* ---------- ダイアログ ---------- */
 .dialog {
   border: 1px solid var(--line);
@@ -369,6 +452,10 @@ body[data-refs="closed"] .refs, body[data-refs="closed"] .splitter { display: no
   .preview { padding: 16px; }
   .preview.vertical { padding: 20px 16px; }
   .splitter { display: none !important; }
+  .topbar { flex-wrap: wrap; row-gap: 0; padding-bottom: 0; }
+  .work-tabs { order: 10; flex-basis: 100%; margin: 4px -12px 0; padding: 0 8px; margin-bottom: -1px; }
+  .wtab { padding: 7px 12px; font-size: 13px; }
+  .counts { margin-left: auto; }
   .mtabs {
     display: flex;
     flex: none;
@@ -391,7 +478,6 @@ body[data-refs="closed"] .refs, body[data-refs="closed"] .splitter { display: no
 }
 @media (max-width: 520px) {
   .topbar { gap: 8px; padding-left: 8px; padding-right: 8px; }
-  .crumb { font-size: 14px; }
   .save-status { display: none; }
   .save-status.error { display: inline; }
   .ep-head { padding: 6px 8px 2px; }
