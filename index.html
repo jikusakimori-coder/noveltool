@@ -8,11 +8,11 @@
 <title>小説執筆ノート</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body data-view="edit">
+<body data-view="edit" class="loading">
 
 <header class="topbar">
-  <button id="menuBtn" class="icon-btn only-narrow" type="button" aria-label="作品一覧を開く">☰</button>
-  <div class="crumb" id="crumb"></div>
+  <button id="menuBtn" class="icon-btn only-narrow" type="button" aria-label="話の一覧を開く">☰</button>
+  <nav id="workTabs" class="work-tabs" aria-label="作品の切り替え"></nav>
   <div class="counts" id="counts" aria-live="polite"></div>
   <span class="save-status" id="saveStatus"></span>
   <button id="refsToggle" class="btn small only-wide" type="button" aria-pressed="true" title="資料パネルの表示／非表示">資料</button>
@@ -24,17 +24,26 @@
 </nav>
 
 <div class="layout">
-  <aside id="sidebar" class="sidebar" aria-label="作品と話の一覧">
-    <div class="side-head">
-      <h2>作品</h2>
-      <button id="addWork" class="btn small" type="button">＋ 新しい作品</button>
+  <aside id="sidebar" class="sidebar" aria-label="話の一覧">
+    <div class="side-work">
+      <div class="side-work-title">
+        <h2 id="sideTitle"></h2>
+        <span id="sideCount" class="cnt"></span>
+      </div>
+      <div class="work-actions">
+        <button id="renameWork" type="button">名前を変更</button>
+        <button id="exportWork" type="button">この作品を書き出し</button>
+        <button id="deleteWork" type="button" class="danger">作品を削除</button>
+      </div>
     </div>
-    <ul id="workList" class="works"></ul>
+    <ol id="epList" class="eps"></ol>
+    <button id="addEp" class="add-ep" type="button">＋ 話を追加</button>
     <div class="side-foot">
-      <button id="exportAll" class="btn" type="button">全原稿を書き出し</button>
-      <button id="importBtn" class="btn" type="button">テキストを読み込み</button>
+      <button id="exportAll" class="btn" type="button">全作品を書き出し</button>
+      <button id="importBtn" class="btn" type="button">書き出したファイルを読み込み</button>
       <input id="importFile" type="file" accept=".txt,text/plain" hidden>
-      <p class="note">原稿はこのブラウザ内に自動保存されます。機種変更やブラウザのデータ削除に備えて、ときどき書き出してください。</p>
+      <p class="note">原稿と資料はこのブラウザ内に自動保存されます。書き出したファイルには原稿と資料の両方が入ります。機種変更やブラウザのデータ削除に備えて、ときどき書き出してください。</p>
+      <p id="storageInfo" class="note"></p>
     </div>
   </aside>
   <div id="scrim" class="scrim"></div>
@@ -46,7 +55,7 @@
       <button id="emptyAction" class="btn primary" type="button"></button>
     </section>
 
-    <section id="workspace" class="workspace">
+    <section id="workspace" class="workspace" hidden>
       <div class="ep-head">
         <input id="epTitle" class="ep-title" type="text" placeholder="話のタイトル" aria-label="話のタイトル">
         <div class="ep-actions">
@@ -77,6 +86,11 @@
         </div>
       </div>
 
+      <div id="lockBanner" class="lock-banner" hidden>
+        <span id="lockMsg"></span>
+        <button id="lockTake" class="btn small" type="button">このタブで編集する</button>
+      </div>
+
       <div class="panes">
         <textarea id="editor" class="editor" spellcheck="false" autocomplete="off"
           placeholder="ここに本文を書きます。&#10;&#10;ルビ：｜漢字《かんじ》　または　漢字《かんじ》&#10;傍点：《《強調したい文字》》&#10;《》をそのまま表示：｜《"></textarea>
@@ -93,30 +107,37 @@
         <span id="refName" class="name">資料</span><span class="caret">▾</span>
       </button>
       <button id="refTocBtn" class="btn small" type="button" aria-pressed="false">目次</button>
-      <button id="refAdd" class="btn small" type="button" title="MDファイルを読み込み">＋ 読み込み</button>
+      <button id="refAdd" class="btn small" type="button" title="MDファイルを読み込み（複数選択可）">＋ 読み込み</button>
       <button id="refsClose" class="icon-btn only-wide" type="button" title="資料パネルを隠す" aria-label="資料パネルを隠す">✕</button>
       <input id="refFile" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden>
+      <input id="refFolder" type="file" webkitdirectory multiple hidden>
     </div>
     <div id="refList" class="ref-list" hidden></div>
     <nav id="refToc" class="ref-toc" hidden aria-label="目次"></nav>
     <div id="refBody" class="ref-body md" tabindex="0"></div>
+    <div class="drop-hint">ここにMDファイルやフォルダをドロップして読み込み</div>
   </section>
   </div>
 </div>
 
 <dialog id="importDialog" class="dialog">
   <form method="dialog">
-    <h3>テキストの読み込み</h3>
+    <h3>書き出したファイルの読み込み</h3>
     <p id="importMsg"></p>
-    <p class="note">「すべて置き換え」を選ぶと、いまある原稿は消えます。心配なときは先に書き出しておいてください。</p>
+    <ul id="importList" class="import-list"></ul>
+    <fieldset id="importModeBox" class="import-mode">
+      <legend>同じ作品がすでにあるとき</legend>
+      <label><input type="radio" name="importMode" value="replace" checked> 上書きする（その作品の原稿と資料を、ファイルの内容に置き換え）</label>
+      <label><input type="radio" name="importMode" value="add"> 別の作品として追加する</label>
+    </fieldset>
     <div class="dialog-actions">
       <button value="cancel" class="btn">キャンセル</button>
-      <button value="replace" class="btn danger">すべて置き換え</button>
-      <button value="append" class="btn primary">追加する</button>
+      <button value="ok" class="btn primary">読み込む</button>
     </div>
   </form>
 </dialog>
 
+<script src="db.js"></script>
 <script src="app.js"></script>
 <script src="refs.js"></script>
 </body>

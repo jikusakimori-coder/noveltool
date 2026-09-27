@@ -2,106 +2,252 @@
 
 /* =========================================================
    小説執筆ノート
-   データはすべて localStorage に保存（サーバー送信なし）
+   原稿と資料はブラウザ内の IndexedDB に保存します（db.js）。
+   URL の ?work=作品ID で開く作品が決まるので、
+   ブラウザの別タブ・別ウィンドウで別の作品を開けます。
    ========================================================= */
 
-const STORE_KEY = 'noveltool.data.v1';
-const UI_KEY = 'noveltool.ui.v1';
+const UI_KEY = 'noveltool.ui.v2';
+const LEGACY_UI_KEY = 'noveltool.ui.v1';
+// 表示の好み（すべてのタブで共通）
+const PREF_KEYS = ['view', 'dir', 'pvSize', 'refsOpen', 'refW', 'mtab', 'tocOpen'];
 
 // 書き出しファイルの書式
-const EXPORT_HEADER = '#noveltool v1';
+const EXPORT_HEADER = '#noveltool v2';
 const WORK_MARK = '=====作品：';
+const ID_MARK = '@@@@@作品ID：';
 const EP_MARK = '-----話：';
+const REF_MARK = '+++++資料：';
 
 const $ = (s) => document.querySelector(s);
 const el = {
-  crumb: $('#crumb'), counts: $('#counts'), saveStatus: $('#saveStatus'),
-  workList: $('#workList'), empty: $('#empty'), emptyMsg: $('#emptyMsg'), emptyAction: $('#emptyAction'),
+  tabs: $('#workTabs'), counts: $('#counts'), saveStatus: $('#saveStatus'),
+  sideTitle: $('#sideTitle'), sideCount: $('#sideCount'), epList: $('#epList'), storageInfo: $('#storageInfo'),
+  empty: $('#empty'), emptyMsg: $('#emptyMsg'), emptyAction: $('#emptyAction'),
   workspace: $('#workspace'), epTitle: $('#epTitle'), editor: $('#editor'), preview: $('#preview'),
-  epUp: $('#epUp'), epDown: $('#epDown'),
+  epUp: $('#epUp'), epDown: $('#epDown'), epDelete: $('#epDelete'),
+  lockBanner: $('#lockBanner'), lockMsg: $('#lockMsg'),
   importFile: $('#importFile'), importDialog: $('#importDialog'), importMsg: $('#importMsg'),
+  importList: $('#importList'), importModeBox: $('#importModeBox'),
 };
 const wideMQ = window.matchMedia('(min-width: 900px)');
+const uid = DB.uid;
 
-/* ---------- データ ---------- */
+/* ---------- 状態 ---------- */
 
-function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
-function newEpisode(title, body = '') { return { id: uid(), title, body, updated: Date.now() }; }
-function newWork(title) { return { id: uid(), title, episodes: [newEpisode('第1話')] }; }
-
-function loadData() {
-  let raw = null;
-  try { raw = localStorage.getItem(STORE_KEY); } catch (e) { console.error(e); }
-  if (raw) {
-    try {
-      const d = JSON.parse(raw);
-      if (d && Array.isArray(d.works)) return d;
-    } catch (e) { console.error(e); }
-    // 壊れたデータは消さずに退避しておく
-    try { localStorage.setItem(STORE_KEY + '.broken.' + Date.now(), raw); } catch (e) { /* noop */ }
-  }
-  return { version: 1, works: [newWork('新しい作品')] };
-}
+let works = [];      // 作品の一覧（タイトルなど）
+let workId = null;   // このタブで開いている作品
+let episodes = [];   // 開いている作品の話（order 順）
+let epId = null;     // 開いている話
+const dirty = new Map(); // 未保存の話 id → 話
 
 function loadUI() {
-  const def = { workId: null, epId: null, view: 'edit', dir: 'h', open: [], pvSize: 17 };
-  try { return Object.assign(def, JSON.parse(localStorage.getItem(UI_KEY) || '{}')); } catch (e) { return def; }
+  const def = { view: 'edit', dir: 'h', pvSize: 17, refsOpen: true, refW: 420, mtab: 'write', tocOpen: false, lastWork: null, lastEp: {}, lastRef: {} };
+  let cur = null;
+  try { cur = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); } catch (e) { /* noop */ }
+  if (!cur) {
+    cur = {};
+    try {
+      const old = JSON.parse(localStorage.getItem(LEGACY_UI_KEY) || '{}');
+      for (const k of PREF_KEYS) if (old[k] !== undefined) cur[k] = old[k];
+      if (old.workId) cur.lastWork = old.workId;
+      if (old.workId && old.epId) cur.lastEp = { [old.workId]: old.epId };
+    } catch (e) { /* noop */ }
+  }
+  return Object.assign(def, cur, { refId: null });
 }
-
-let data = loadData();
 let ui = loadUI();
 
-function curWork() { return data.works.find((w) => w.id === ui.workId) || null; }
-function curEp() { const w = curWork(); return w ? w.episodes.find((e) => e.id === ui.epId) || null : null; }
-
-function ensureSelection() {
-  let w = curWork();
-  if (!w && data.works.length) { w = data.works[0]; ui.workId = w.id; }
-  if (!w) { ui.workId = null; ui.epId = null; return; }
-  if (!w.episodes.some((e) => e.id === ui.epId)) ui.epId = w.episodes[0] ? w.episodes[0].id : null;
-  if (!ui.open.includes(w.id)) ui.open.push(w.id);
+// 別タブの記録を消さないよう、保存済みの内容に「このタブの分」だけを書き足す
+function saveUI() {
+  try {
+    const s = JSON.parse(localStorage.getItem(UI_KEY) || '{}');
+    for (const k of PREF_KEYS) s[k] = ui[k];
+    s.lastEp = { ...(s.lastEp || {}) };
+    s.lastRef = { ...(s.lastRef || {}) };
+    if (workId) {
+      s.lastWork = workId;
+      if (epId) s.lastEp[workId] = epId;
+      if (ui.refId) s.lastRef[workId] = ui.refId;
+    }
+    localStorage.setItem(UI_KEY, JSON.stringify(s));
+    ui.lastEp = s.lastEp;
+    ui.lastRef = s.lastRef;
+  } catch (e) { /* noop */ }
 }
+
+function curWork() { return works.find((w) => w.id === workId) || null; }
+function curEp() { return episodes.find((e) => e.id === epId) || null; }
 
 /* ---------- 保存 ---------- */
 
 let saveTimer = null;
-let dirty = false;
+let saving = null;
 let saveErrorShown = false;
-
-function markDirty() {
-  dirty = true;
-  setStatus('編集中…');
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveNow, 600);
-}
-
-function saveNow() {
-  clearTimeout(saveTimer);
-  if (!dirty) return true;
-  try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(data));
-    dirty = false;
-    const t = new Date();
-    setStatus(`保存済み ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}`);
-    return true;
-  } catch (e) {
-    console.error(e);
-    setStatus('保存できません', true);
-    if (!saveErrorShown) {
-      saveErrorShown = true;
-      alert('原稿を保存できませんでした（ブラウザの保存容量不足の可能性があります）。\n「全原稿を書き出し」でバックアップを取ってください。');
-    }
-    return false;
-  }
-}
-
-function saveUI() {
-  try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch (e) { /* noop */ }
-}
+let persistAsked = false;
 
 function setStatus(text, isError = false) {
   el.saveStatus.textContent = text;
   el.saveStatus.classList.toggle('error', isError);
+}
+
+function markDirty(ep) {
+  dirty.set(ep.id, ep);
+  setStatus('編集中…');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushSave, 600);
+}
+
+async function flushSave() {
+  clearTimeout(saveTimer);
+  while (saving) await saving;
+  if (!dirty.size) return true;
+  const items = [...dirty.values()];
+  dirty.clear();
+  saving = saveItems(items);
+  try { return await saving; } finally { saving = null; }
+}
+
+async function saveItems(items) {
+  const byWork = new Map();
+  const notes = [];
+  let ok = true;
+  for (const ep of items) {
+    try {
+      const r = await DB.saveEpisode(ep);
+      ep.rev = r.rev;
+      if (!byWork.has(ep.workId)) byWork.set(ep.workId, []);
+      byWork.get(ep.workId).push(ep.id);
+      if (r.copy) {
+        if (ep.workId === workId) episodes.push(r.copy);
+        notes.push(`「${ep.title || '無題'}」は別のタブでも保存されていたため、その内容を「${r.copy.title}」として残しました。`);
+      }
+      if (r.restored) notes.push(`「${ep.title || '無題'}」は別のタブで削除されていましたが、書いていた内容で復元しました。`);
+    } catch (e) {
+      console.error(e);
+      ok = false;
+      if (!dirty.has(ep.id)) dirty.set(ep.id, ep);
+    }
+  }
+  for (const [wid, ids] of byWork) DB.notify({ t: 'episodes', workId: wid, ids });
+  if (!ok) {
+    setStatus('保存できません', true);
+    if (!saveErrorShown) {
+      saveErrorShown = true;
+      alert('原稿を保存できませんでした（ブラウザの保存容量不足などの可能性があります）。\n「この作品を書き出し」でバックアップを取ってください。');
+    }
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(flushSave, 5000);
+    return false;
+  }
+  if (notes.length) {
+    episodes.sort((a, b) => a.order - b.order);
+    renderSidebar();
+    alert(notes.join('\n'));
+  }
+  if (!dirty.size) {
+    const t = new Date();
+    setStatus(`保存済み ${t.getHours()}:${String(t.getMinutes()).padStart(2, '0')}`);
+  }
+  if (!persistAsked && navigator.storage && navigator.storage.persist) {
+    persistAsked = true;
+    navigator.storage.persist().catch(() => {});
+  }
+  return true;
+}
+
+/* ---------- 編集の占有（同じ話を複数のタブで同時に書かない） ---------- */
+
+const HAS_LOCKS = !!(navigator.locks && navigator.locks.request);
+const lock = { epId: null, token: null, holder: 0, release: null, abort: null, editable: true };
+let lockSeq = 0;
+
+function lockName(id) { return 'noveltool-episode-' + id; }
+
+function requestLock(token, opts) {
+  const rid = ++lockSeq;
+  const options = { ...opts };
+  if (!opts.ifAvailable && !opts.steal) {
+    const ac = new AbortController();
+    lock.abort = ac;
+    options.signal = ac.signal;
+  }
+  navigator.locks.request(lockName(lock.epId), options, (l) => {
+    if (lock.token !== token) return undefined;
+    if (!l) {
+      setEditable(false, 'busy');
+      requestLock(token, {});
+      return undefined;
+    }
+    return new Promise((resolve) => {
+      lock.release = resolve;
+      lock.holder = rid;
+      onLockGranted(token);
+    });
+  }).catch(() => {
+    // 別のタブに編集を引き継がれた
+    if (lock.token !== token || lock.holder !== rid) return;
+    lock.holder = 0;
+    lock.release = null;
+    flushSave();
+    setEditable(false, 'stolen');
+    requestLock(token, {});
+  });
+}
+
+function acquireLock(id) {
+  releaseLock();
+  lock.epId = id;
+  if (!id || !HAS_LOCKS) { setEditable(true); return; }
+  lock.token = {};
+  requestLock(lock.token, { ifAvailable: true });
+}
+
+function releaseLock() {
+  lock.token = null;
+  lock.holder = 0;
+  if (lock.abort) lock.abort.abort();
+  if (lock.release) lock.release();
+  lock.abort = null;
+  lock.release = null;
+  lock.epId = null;
+}
+
+function takeLock() {
+  if (!lock.token) return;
+  if (lock.abort) lock.abort.abort();
+  lock.abort = null;
+  requestLock(lock.token, { steal: true });
+}
+
+async function onLockGranted(token) {
+  // 別タブで書かれた最新の内容を読み直してから編集可能にする
+  const id = lock.epId;
+  try {
+    const rec = await DB.getEpisode(id);
+    if (lock.token !== token) return;
+    const ep = episodes.find((e) => e.id === id);
+    if (rec && ep && !dirty.has(id) && rec.rev !== ep.rev) {
+      Object.assign(ep, { title: rec.title, body: rec.body, rev: rec.rev, updated: rec.updated });
+      renderAll();
+    }
+  } catch (e) { console.error(e); }
+  if (lock.token === token) setEditable(true);
+}
+
+function setEditable(on, reason) {
+  lock.editable = on;
+  el.editor.readOnly = !on;
+  el.epTitle.readOnly = !on;
+  el.epDelete.disabled = !on;
+  $('#insRuby').disabled = !on;
+  $('#insBouten').disabled = !on;
+  el.lockBanner.hidden = on;
+  if (!on) {
+    el.lockMsg.textContent = reason === 'stolen'
+      ? '別のタブでこの話の編集を始めたため、このタブは読み取り専用になりました。'
+      : 'この話は別のタブで編集中のため、読み取り専用で表示しています。';
+  }
 }
 
 /* ---------- カクヨム記法の解析 ---------- */
@@ -154,13 +300,13 @@ function epCount(ep) {
   countCache.set(ep.id, { body: ep.body, n });
   return n;
 }
-function workCount(w) { return w.episodes.reduce((a, e) => a + epCount(e), 0); }
+function workTotal() { return episodes.reduce((a, e) => a + epCount(e), 0); }
 const fmt = (n) => n.toLocaleString('ja-JP');
 
 /* ---------- 描画 ---------- */
 
 function esc(s) {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 // 縦書き用：半角の2桁までの数字と !? の連続を縦中横に
@@ -192,36 +338,33 @@ function renderPreview() {
   el.preview.innerHTML = `<h2 class="pv-title">${textHtml(ep.title || '無題')}</h2><div class="pv-body">${body}</div>`;
 }
 
+function renderTabs() {
+  el.tabs.innerHTML = works.map((w) => {
+    const cur = w.id === workId;
+    return `<a class="wtab${cur ? ' current' : ''}" href="?work=${encodeURIComponent(w.id)}" data-work="${esc(w.id)}"${cur ? ' aria-current="page"' : ''}
+      title="${esc(w.title || '無題')}（Ctrl／⌘＋クリックで別のタブに開く）">${esc(w.title || '無題')}</a>`;
+  }).join('') + '<button type="button" class="wtab-add" data-act="add-work" title="新しい作品" aria-label="新しい作品">＋</button>';
+  const cur = el.tabs.querySelector('.current');
+  if (cur) cur.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
 function renderSidebar() {
-  const html = data.works.map((w) => {
-    const open = ui.open.includes(w.id);
-    const eps = w.episodes.map((e, i) => `
-      <li><button type="button" class="row-btn ep${e.id === ui.epId ? ' current' : ''}" data-act="select-ep" data-work="${w.id}" data-ep="${e.id}">
-        <span class="no">${i + 1}</span><span class="name">${esc(e.title || '無題')}</span><span class="cnt">${fmt(epCount(e))}</span>
-      </button></li>`).join('');
-    return `
-    <li class="work${open ? ' open' : ''}">
-      <button type="button" class="row-btn work-title" data-act="toggle-work" data-work="${w.id}" aria-expanded="${open}">
-        <span class="chev">▸</span><span class="name">${esc(w.title || '無題')}</span><span class="cnt">${fmt(workCount(w))}字</span>
-      </button>
-      <div class="work-actions">
-        <button type="button" data-act="rename-work" data-work="${w.id}">名前を変更</button>
-        <button type="button" data-act="export-work" data-work="${w.id}">この作品を書き出し</button>
-        <button type="button" class="danger" data-act="delete-work" data-work="${w.id}">削除</button>
-      </div>
-      <ol class="eps">${eps}</ol>
-      <button type="button" class="add-ep" data-act="add-ep" data-work="${w.id}">＋ 話を追加</button>
-    </li>`;
-  }).join('');
-  el.workList.innerHTML = html;
+  const w = curWork();
+  el.sideTitle.textContent = w ? (w.title || '無題') : '作品がありません';
+  el.sideCount.textContent = w ? `${fmt(workTotal())}字` : '';
+  $('#addEp').hidden = !w;
+  document.querySelector('.work-actions').hidden = !w;
+  el.epList.innerHTML = episodes.map((e, i) => `
+    <li><button type="button" class="row-btn ep${e.id === epId ? ' current' : ''}" data-ep="${esc(e.id)}">
+      <span class="no">${i + 1}</span><span class="name">${esc(e.title || '無題')}</span><span class="cnt">${fmt(epCount(e))}</span>
+    </button></li>`).join('');
 }
 
 function renderCounts() {
   const w = curWork();
   const ep = curEp();
-  el.crumb.textContent = w ? (w.title || '無題') : '小説執筆ノート';
   el.counts.innerHTML = w
-    ? (ep ? `<span>この話 <b>${fmt(epCount(ep))}</b>字</span>` : '') + `<span>作品計 <b>${fmt(workCount(w))}</b>字</span>`
+    ? (ep ? `<span>この話 <b>${fmt(epCount(ep))}</b>字</span>` : '') + `<span>作品計 <b>${fmt(workTotal())}</b>字</span>`
     : '';
 }
 
@@ -234,11 +377,12 @@ function renderMain() {
   const ep = curEp();
   el.workspace.hidden = !ep;
   el.empty.hidden = !!ep;
+  el.emptyAction.hidden = false;
   if (!ep) {
     if (w) {
       el.emptyMsg.textContent = 'この作品にはまだ話がありません。';
       el.emptyAction.textContent = '＋ 話を追加';
-      el.emptyAction.onclick = () => addEpisode(w);
+      el.emptyAction.onclick = addEpisode;
     } else {
       el.emptyMsg.textContent = '作品がありません。';
       el.emptyAction.textContent = '＋ 新しい作品';
@@ -252,18 +396,24 @@ function renderMain() {
       el.preview.scrollTop = 0;
       el.preview.scrollLeft = 0;
     } else if (el.editor.value !== ep.body) {
+      // 別タブで更新された内容を反映（スクロール位置とカーソルはなるべく保つ）
+      const top = el.editor.scrollTop;
+      const s = el.editor.selectionStart;
+      const e = el.editor.selectionEnd;
       el.editor.value = ep.body;
+      el.editor.scrollTop = top;
+      if (document.activeElement === el.editor) el.editor.setSelectionRange(Math.min(s, ep.body.length), Math.min(e, ep.body.length));
     }
-    if (document.activeElement !== el.epTitle) el.epTitle.value = ep.title;
-    const idx = w.episodes.indexOf(ep);
+    if (document.activeElement !== el.epTitle || el.epTitle.readOnly) el.epTitle.value = ep.title;
+    const idx = episodes.indexOf(ep);
     el.epUp.disabled = idx <= 0;
-    el.epDown.disabled = idx >= w.episodes.length - 1;
+    el.epDown.disabled = idx >= episodes.length - 1;
   }
 
   const view = effectiveView();
   document.body.dataset.view = view;
-  document.querySelectorAll('[data-view]').forEach((b) => { if (b.tagName === 'BUTTON') b.classList.toggle('on', b.dataset.view === ui.view); });
-  document.querySelectorAll('[data-dir]').forEach((b) => b.classList.toggle('on', b.dataset.dir === ui.dir));
+  document.querySelectorAll('button[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === ui.view));
+  document.querySelectorAll('button[data-dir]').forEach((b) => b.classList.toggle('on', b.dataset.dir === ui.dir));
   el.preview.classList.toggle('vertical', ui.dir === 'v');
   el.preview.style.setProperty('--pv-size', ui.pvSize + 'px');
   if (view !== 'edit') renderPreview();
@@ -271,96 +421,152 @@ function renderMain() {
 }
 
 function renderAll() {
-  ensureSelection();
+  const w = curWork();
+  document.title = w ? `${w.title || '無題'} - 小説執筆ノート` : '小説執筆ノート';
+  renderTabs();
   renderSidebar();
   renderMain();
-  saveUI();
 }
 
-/* ---------- 操作 ---------- */
+/* ---------- 作品の切り替え ---------- */
 
-function selectEpisode(workId, epId) {
-  ui.workId = workId;
-  ui.epId = epId;
-  if (!ui.open.includes(workId)) ui.open.push(workId);
-  closeDrawer();
+function urlWorkId() { return new URLSearchParams(location.search).get('work'); }
+
+function setUrl(id, push) {
+  try {
+    const u = new URL(location.href);
+    if (id) u.searchParams.set('work', id); else u.searchParams.delete('work');
+    if (u.href === location.href) return;
+    history[push ? 'pushState' : 'replaceState'](null, '', u.href);
+  } catch (e) { /* file:// などで履歴を変更できない場合は URL を変えずに続ける */ }
+}
+
+let openSeq = 0;
+async function openWork(id, { push = false } = {}) {
+  const seq = ++openSeq;
+  await flushSave();
+  if (seq !== openSeq) return;
+  releaseLock();
+  let w = works.find((x) => x.id === id);
+  if (!w) {
+    if (id) setStatus('指定された作品が見つからないため、別の作品を開きました');
+    w = works.find((x) => x.id === ui.lastWork) || works[0] || null;
+    push = false;
+  }
+  workId = w ? w.id : null;
+  const list = w ? await DB.episodes(w.id) : [];
+  if (seq !== openSeq) return;
+  episodes = list;
+  const last = w ? ui.lastEp[w.id] : null;
+  epId = episodes.some((e) => e.id === last) ? last : (episodes[0] ? episodes[0].id : null);
+  setUrl(workId, push);
+  el.editor.dataset.ep = '';
   renderAll();
+  acquireLock(epId);
+  saveUI();
+  Refs.setWork(workId);
 }
 
-function addWork() {
+el.tabs.addEventListener('click', (e) => {
+  if (e.target.closest('[data-act="add-work"]')) { addWork(); return; }
+  const a = e.target.closest('a[data-work]');
+  if (!a) return;
+  // Ctrl／⌘／Shift＋クリックや中クリックはブラウザに任せて別タブ・別窓で開く
+  if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  if (a.dataset.work !== workId) openWork(a.dataset.work, { push: true });
+});
+window.addEventListener('popstate', () => openWork(urlWorkId()));
+
+/* ---------- 作品の操作 ---------- */
+
+async function addWork() {
   const title = prompt('作品名を入力してください', '新しい作品');
   if (title === null) return;
-  const w = newWork(title.trim() || '無題');
-  data.works.push(w);
-  markDirty();
-  selectEpisode(w.id, w.episodes[0].id);
-  saveNow();
+  const w = await DB.createWork(title.trim() || '無題');
+  works = await DB.works();
+  DB.notify({ t: 'works' });
+  await openWork(w.id, { push: true });
 }
 
-function addEpisode(w) {
-  const ep = newEpisode(`第${w.episodes.length + 1}話`);
-  w.episodes.push(ep);
-  markDirty();
-  selectEpisode(w.id, ep.id);
-  saveNow();
-  el.epTitle.focus();
-  el.epTitle.select();
-}
-
-function renameWork(w) {
+$('#renameWork').addEventListener('click', async () => {
+  const w = curWork();
+  if (!w) return;
   const title = prompt('作品名', w.title);
   if (title === null) return;
   w.title = title.trim() || '無題';
-  markDirty();
+  await DB.putWork(w);
+  DB.notify({ t: 'works' });
   renderAll();
-}
-
-function deleteWork(w) {
-  if (!confirm(`作品「${w.title}」を削除しますか？\n全${w.episodes.length}話・${fmt(workCount(w))}字が消え、元に戻せません。`)) return;
-  data.works = data.works.filter((x) => x !== w);
-  ui.open = ui.open.filter((id) => id !== w.id);
-  if (ui.workId === w.id) { ui.workId = null; ui.epId = null; }
-  markDirty();
-  saveNow();
-  renderAll();
-}
-
-function toggleWork(w) {
-  const open = ui.open.includes(w.id);
-  if (open && ui.workId === w.id) {
-    ui.open = ui.open.filter((id) => id !== w.id);
-  } else {
-    if (!open) ui.open.push(w.id);
-    if (ui.workId !== w.id) { ui.workId = w.id; ui.epId = null; }
-  }
-  renderAll();
-}
-
-el.workList.addEventListener('click', (e) => {
-  const b = e.target.closest('[data-act]');
-  if (!b) return;
-  const w = data.works.find((x) => x.id === b.dataset.work);
-  if (!w) return;
-  switch (b.dataset.act) {
-    case 'toggle-work': toggleWork(w); break;
-    case 'select-ep': selectEpisode(w.id, b.dataset.ep); break;
-    case 'add-ep': addEpisode(w); break;
-    case 'rename-work': renameWork(w); break;
-    case 'export-work': download(buildExport([w]), `${safeName(w.title)}_${stamp()}.txt`); break;
-    case 'delete-work': deleteWork(w); break;
-  }
 });
 
-$('#addWork').addEventListener('click', addWork);
+$('#deleteWork').addEventListener('click', async () => {
+  const w = curWork();
+  if (!w) return;
+  const refCount = Refs.count();
+  if (!confirm(`作品「${w.title}」を削除しますか？\n全${episodes.length}話・${fmt(workTotal())}字と、資料${refCount}件が消えます。元に戻せません。`)) return;
+  await flushSave();
+  releaseLock();
+  dirty.clear();
+  await DB.deleteWork(w.id);
+  DB.notify({ t: 'works', deleted: w.id });
+  works = await DB.works();
+  await openWork(works[0] ? works[0].id : null);
+  setStatus('作品を削除しました');
+});
+
+async function reloadWorks() {
+  works = await DB.works();
+  if (workId && !curWork()) {
+    alert('開いていた作品は、別のタブで削除されました。');
+    dirty.clear();
+    await openWork(null);
+    return;
+  }
+  renderAll();
+}
+
+/* ---------- 話の操作 ---------- */
+
+function selectEpisode(id) {
+  if (id === epId) { closeDrawer(); return; }
+  epId = id;
+  closeDrawer();
+  renderAll();
+  acquireLock(id);
+  saveUI();
+}
+
+el.epList.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-ep]');
+  if (b) selectEpisode(b.dataset.ep);
+});
+
+async function addEpisode() {
+  const w = curWork();
+  if (!w) return;
+  const now = Date.now();
+  const ep = {
+    id: uid(), workId: w.id, title: `第${episodes.length + 1}話`, body: '',
+    order: episodes.reduce((m, e) => Math.max(m, e.order), -1) + 1, created: now, updated: now, rev: 1,
+  };
+  await DB.addEpisode(ep);
+  episodes.push(ep);
+  DB.notify({ t: 'episodes', workId: w.id, ids: [ep.id] });
+  selectEpisode(ep.id);
+  el.epTitle.focus();
+  el.epTitle.select();
+}
+$('#addEp').addEventListener('click', addEpisode);
 
 // 本文の入力
 let liveTimer = null;
 el.editor.addEventListener('input', () => {
   const ep = curEp();
-  if (!ep) return;
+  if (!ep || !lock.editable) return;
   ep.body = el.editor.value;
   ep.updated = Date.now();
-  markDirty();
+  markDirty(ep);
   clearTimeout(liveTimer);
   liveTimer = setTimeout(() => {
     renderCounts();
@@ -371,42 +577,45 @@ el.editor.addEventListener('input', () => {
 
 el.epTitle.addEventListener('input', () => {
   const ep = curEp();
-  if (!ep) return;
+  if (!ep || !lock.editable) return;
   ep.title = el.epTitle.value;
-  markDirty();
+  ep.updated = Date.now();
+  markDirty(ep);
   renderSidebar();
 });
 el.epTitle.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); el.editor.focus(); }
 });
 
-function moveEpisode(delta) {
-  const w = curWork();
+async function moveEpisode(delta) {
   const ep = curEp();
-  if (!w || !ep) return;
-  const i = w.episodes.indexOf(ep);
+  if (!ep) return;
+  const i = episodes.indexOf(ep);
   const j = i + delta;
-  if (j < 0 || j >= w.episodes.length) return;
-  w.episodes.splice(i, 1);
-  w.episodes.splice(j, 0, ep);
-  markDirty();
+  if (j < 0 || j >= episodes.length) return;
+  episodes.splice(i, 1);
+  episodes.splice(j, 0, ep);
+  episodes.forEach((e, k) => { e.order = k; });
   renderAll();
+  await DB.setOrders(episodes.map((e) => ({ id: e.id, order: e.order })));
+  DB.notify({ t: 'episodes', workId, ids: [] });
 }
 el.epUp.addEventListener('click', () => moveEpisode(-1));
 el.epDown.addEventListener('click', () => moveEpisode(1));
 
-$('#epDelete').addEventListener('click', () => {
-  const w = curWork();
+el.epDelete.addEventListener('click', async () => {
   const ep = curEp();
-  if (!w || !ep) return;
+  if (!ep || !lock.editable) return;
   if (!confirm(`「${ep.title || '無題'}」（${fmt(epCount(ep))}字）を削除しますか？\n元に戻せません。`)) return;
-  const i = w.episodes.indexOf(ep);
-  w.episodes.splice(i, 1);
-  const next = w.episodes[Math.min(i, w.episodes.length - 1)];
-  ui.epId = next ? next.id : null;
-  markDirty();
-  saveNow();
-  renderAll();
+  dirty.delete(ep.id);
+  releaseLock();
+  await DB.deleteEpisode(ep.id);
+  const i = episodes.indexOf(ep);
+  episodes.splice(i, 1);
+  DB.notify({ t: 'episodes', workId, ids: [], deleted: [ep.id] });
+  const next = episodes[Math.min(i, episodes.length - 1)];
+  epId = null;
+  if (next) selectEpisode(next.id); else renderAll();
 });
 
 $('#epCopy').addEventListener('click', async () => {
@@ -422,7 +631,50 @@ $('#epCopy').addEventListener('click', async () => {
   }
 });
 
-// 表示切り替え
+$('#lockTake').addEventListener('click', takeLock);
+
+// 別タブで保存・並べ替え・削除された話を取り込む（このタブで未保存の話はそのまま）
+async function refreshEpisodes() {
+  const fresh = await DB.episodes(workId);
+  const map = new Map(episodes.map((e) => [e.id, e]));
+  const next = [];
+  for (const rec of fresh) {
+    const local = map.get(rec.id);
+    if (!local) { next.push(rec); continue; }
+    map.delete(rec.id);
+    local.order = rec.order;
+    if (!dirty.has(rec.id) && local.rev !== rec.rev) {
+      Object.assign(local, { title: rec.title, body: rec.body, rev: rec.rev, updated: rec.updated });
+    }
+    next.push(local);
+  }
+  // DB から消えた話：未保存の変更があれば残し（次の保存で復元）、なければ一覧から外す
+  let removedCurrent = false;
+  for (const local of map.values()) {
+    if (dirty.has(local.id)) next.push(local);
+    else if (local.id === epId) removedCurrent = true;
+  }
+  next.sort((a, b) => a.order - b.order);
+  episodes = next;
+  if (removedCurrent) {
+    epId = null;
+    setStatus('開いていた話は別のタブで削除されました');
+    if (episodes[0]) { selectEpisode(episodes[0].id); return; }
+    releaseLock();
+  }
+  renderAll();
+}
+
+DB.onMessage(async (msg) => {
+  try {
+    if (msg.t === 'works') await reloadWorks();
+    else if (msg.t === 'episodes' && msg.workId === workId) await refreshEpisodes();
+    else if (msg.t === 'refs' && msg.workId === workId) Refs.reload();
+  } catch (e) { console.error(e); }
+});
+
+/* ---------- 表示切り替え ---------- */
+
 document.querySelectorAll('button[data-view]').forEach((b) => b.addEventListener('click', () => {
   ui.view = b.dataset.view;
   renderMain();
@@ -454,6 +706,7 @@ el.preview.addEventListener('wheel', (e) => {
 // ルビ・傍点の挿入
 function insertAround(before, after, caretInside) {
   const ta = el.editor;
+  if (ta.readOnly) return;
   const s = ta.selectionStart;
   const e = ta.selectionEnd;
   const sel = ta.value.slice(s, e);
@@ -481,79 +734,80 @@ $('#scrim').addEventListener('click', closeDrawer);
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
     e.preventDefault();
-    dirty = true;
-    saveNow();
+    flushSave();
   }
 });
 
 // 閉じる・裏に回るときは必ず保存
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveNow(); });
-window.addEventListener('pagehide', saveNow);
-window.addEventListener('beforeunload', saveNow);
-
-// 別のタブで保存された内容を反映
-window.addEventListener('storage', (e) => {
-  if (e.key !== STORE_KEY || !e.newValue || dirty) return;
-  try {
-    const d = JSON.parse(e.newValue);
-    if (d && Array.isArray(d.works)) {
-      data = d;
-      countCache.clear();
-      el.editor.dataset.ep = '';
-      renderAll();
-      setStatus('別タブの変更を反映しました');
-    }
-  } catch (err) { /* noop */ }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSave(); });
+window.addEventListener('pagehide', () => { flushSave(); });
+window.addEventListener('beforeunload', (e) => {
+  if (!dirty.size && !saving) return;
+  flushSave();
+  e.preventDefault();
+  e.returnValue = '';
 });
 
 /* ---------- 書き出し・読み込み ---------- */
 
-function escapeBodyLine(line) {
-  return (line.startsWith(WORK_MARK) || line.startsWith(EP_MARK) || line.startsWith('\\')) ? '\\' + line : line;
+function escapeLine(line) {
+  return [WORK_MARK, ID_MARK, EP_MARK, REF_MARK, '\\'].some((m) => line.startsWith(m)) ? '\\' + line : line;
 }
+const escapeText = (text) => text.split('\n').map(escapeLine).join('\n') + '\n';
 
-function buildExport(works) {
+function buildExport(list) {
   let out = EXPORT_HEADER + '\n';
-  for (const w of works) {
+  for (const w of list) {
     out += WORK_MARK + (w.title || '無題') + '\n';
-    for (const ep of w.episodes) {
-      out += EP_MARK + (ep.title || '無題') + '\n';
-      out += ep.body.split('\n').map(escapeBodyLine).join('\n') + '\n';
-    }
+    out += ID_MARK + w.id + '\n';
+    for (const ep of w.episodes) out += EP_MARK + (ep.title || '無題') + '\n' + escapeText(ep.body);
+    for (const r of w.refs) out += REF_MARK + r.name + '\n' + escapeText(r.text);
   }
   return out;
 }
 
 function parseImport(text, fallbackTitle) {
   text = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
-  if (!text.startsWith(EXPORT_HEADER)) {
+  const head = text.match(/^#noveltool v(\d+)/);
+  if (!head) {
     // 普通のテキストファイルは「1作品・1話」として取り込む
-    return [{ title: fallbackTitle, episodes: [{ title: '第1話', body: text.replace(/\n+$/, '') }] }];
+    return [{ id: null, title: fallbackTitle, episodes: [{ title: '第1話', body: text.replace(/\n+$/, '') }], refs: [] }];
   }
+  const v2 = Number(head[1]) >= 2;
   if (text.endsWith('\n')) text = text.slice(0, -1);
   const lines = text.split('\n');
   const works = [];
   let w = null;
-  let ep = null;
+  let cur = null;
   let buf = [];
-  const flush = () => { if (ep) ep.body = buf.join('\n'); buf = []; };
+  const flush = () => { if (cur) cur.text = buf.join('\n'); buf = []; };
+  const ensureWork = () => {
+    if (!w) { w = { id: null, title: fallbackTitle, episodes: [], refs: [] }; works.push(w); }
+    return w;
+  };
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
     if (line.startsWith(WORK_MARK)) {
       flush();
-      ep = null;
-      w = { title: line.slice(WORK_MARK.length).trim() || '無題', episodes: [] };
+      cur = null;
+      w = { id: null, title: line.slice(WORK_MARK.length).trim() || '無題', episodes: [], refs: [] };
       works.push(w);
+    } else if (v2 && w && !cur && line.startsWith(ID_MARK)) {
+      w.id = line.slice(ID_MARK.length).trim() || null;
     } else if (line.startsWith(EP_MARK)) {
       flush();
-      if (!w) { w = { title: fallbackTitle, episodes: [] }; works.push(w); }
-      ep = { title: line.slice(EP_MARK.length).trim(), body: '' };
-      w.episodes.push(ep);
-    } else if (ep) {
+      cur = { title: line.slice(EP_MARK.length).trim(), text: '' };
+      ensureWork().episodes.push(cur);
+    } else if (v2 && line.startsWith(REF_MARK)) {
+      flush();
+      cur = { name: line.slice(REF_MARK.length).trim() || '無題.md', text: '' };
+      ensureWork().refs.push(cur);
+    } else if (cur) {
       buf.push(line.startsWith('\\') ? line.slice(1) : line);
     }
   }
   flush();
+  for (const x of works) x.episodes = x.episodes.map((e) => ({ title: e.title, body: e.text }));
   return works;
 }
 
@@ -566,51 +820,79 @@ function decodeText(buf) {
   }
 }
 
-$('#exportAll').addEventListener('click', () => {
-  saveNow();
-  download(buildExport(data.works), `noveltool_全原稿_${stamp()}.txt`);
+$('#exportWork').addEventListener('click', async () => {
+  if (!workId) return;
+  await flushSave();
+  const w = await DB.exportWork(workId);
+  if (w) download(buildExport([w]), `${safeName(w.title)}_${stamp()}.txt`);
 });
+
+$('#exportAll').addEventListener('click', async () => {
+  await flushSave();
+  const list = [];
+  for (const w of await DB.works()) {
+    const x = await DB.exportWork(w.id);
+    if (x) list.push(x);
+  }
+  download(buildExport(list), `noveltool_全作品_${stamp()}.txt`);
+});
+
 $('#importBtn').addEventListener('click', () => el.importFile.click());
 
 el.importFile.addEventListener('change', async () => {
   const file = el.importFile.files[0];
   el.importFile.value = '';
   if (!file) return;
-  let works;
+  let list;
   try {
     const text = decodeText(await file.arrayBuffer());
-    works = parseImport(text, file.name.replace(/\.[^.]+$/, '') || '読み込んだ作品');
+    list = parseImport(text, file.name.replace(/\.[^.]+$/, '') || '読み込んだ作品');
   } catch (e) {
     console.error(e);
     alert('ファイルを読み込めませんでした。');
     return;
   }
-  if (!works.length) { alert('読み込める原稿が見つかりませんでした。'); return; }
-  const epTotal = works.reduce((a, w) => a + w.episodes.length, 0);
-  el.importMsg.textContent = `「${file.name}」から ${works.length}作品・${epTotal}話 を読み込みます。`;
+  if (!list.length) { alert('読み込める作品が見つかりませんでした。'); return; }
+  works = await DB.works();
+  const exists = (x) => !!(x.id && works.some((w) => w.id === x.id));
+  el.importMsg.textContent = `「${file.name}」に ${list.length}作品 があります。読み込む作品を選んでください。`;
+  el.importList.innerHTML = list.map((x, i) => `
+    <li><label><input type="checkbox" data-i="${i}" checked>
+      <span><b>${esc(x.title)}</b><small>${x.episodes.length}話・資料${x.refs.length}件${exists(x) ? '・<em>同じ作品があります</em>' : ''}</small></span>
+    </label></li>`).join('');
+  el.importModeBox.hidden = !list.some(exists);
   el.importDialog.returnValue = '';
   el.importDialog.showModal();
-  el.importDialog.addEventListener('close', function onClose() {
+  el.importDialog.addEventListener('close', async function onClose() {
     el.importDialog.removeEventListener('close', onClose);
-    const mode = el.importDialog.returnValue;
-    if (mode !== 'append' && mode !== 'replace') return;
-    const imported = works.map((w) => ({
-      id: uid(),
-      title: w.title,
-      episodes: w.episodes.map((e) => newEpisode(e.title, e.body)),
-    }));
-    if (mode === 'replace') { data.works = imported; ui.open = []; }
-    else data.works.push(...imported);
-    countCache.clear();
-    el.editor.dataset.ep = '';
-    const first = imported[0];
-    ui.workId = first.id;
-    ui.epId = first.episodes[0] ? first.episodes[0].id : null;
-    markDirty();
-    saveNow();
+    if (el.importDialog.returnValue !== 'ok') return;
+    const picked = [...el.importList.querySelectorAll('input:checked')].map((c) => list[Number(c.dataset.i)]);
+    if (!picked.length) return;
+    const replace = el.importDialog.querySelector('input[name="importMode"]:checked').value === 'replace';
+    const replacing = replace ? picked.filter(exists) : [];
+    if (replacing.length && !confirm(`次の作品の原稿と資料を、ファイルの内容で置き換えます。元に戻せません。\n\n${replacing.map((x) => '・' + x.title).join('\n')}`)) return;
+    await flushSave();
+    releaseLock();
+    const done = [];
+    try {
+      for (const x of picked) done.push(await DB.importWork(x, replace));
+    } catch (e) {
+      console.error(e);
+      alert('読み込みの途中で保存できなくなりました。');
+    }
+    DB.notify({ t: 'works' });
+    for (const w of done) {
+      DB.notify({ t: 'episodes', workId: w.id, ids: [] });
+      DB.notify({ t: 'refs', workId: w.id });
+    }
+    works = await DB.works();
     closeDrawer();
-    renderAll();
-    setStatus('読み込みました');
+    if (done.length) {
+      await openWork(done[0].id, { push: done[0].id !== workId });
+      setStatus(`${done.length}作品を読み込みました`);
+    } else {
+      await openWork(workId);
+    }
   });
 });
 
@@ -633,6 +915,40 @@ function stamp() {
 }
 function safeName(s) { return (s || '無題').replace(/[\\/:*?"<>|\n\r\t]/g, '_').slice(0, 60); }
 
+async function showStorage() {
+  if (!navigator.storage || !navigator.storage.estimate) return;
+  try {
+    const { usage, quota } = await navigator.storage.estimate();
+    const mb = (n) => (n >= 1e9 ? (n / 1e9).toFixed(1) + 'GB' : Math.max(0.1, n / 1e6).toFixed(1) + 'MB');
+    el.storageInfo.textContent = `保存容量：${mb(usage || 0)} 使用中（上限の目安 ${mb(quota || 0)}）`;
+  } catch (e) { /* noop */ }
+}
+
 /* ---------- 起動 ---------- */
-renderAll();
-setStatus('');
+
+async function init() {
+  let report;
+  try {
+    report = await DB.init();
+    works = await DB.works();
+  } catch (e) {
+    console.error(e);
+    document.body.classList.remove('loading');
+    el.workspace.hidden = true;
+    el.empty.hidden = false;
+    el.emptyMsg.textContent = 'ブラウザの保存領域（IndexedDB）を開けませんでした。プライベートブラウズを解除するか、別のブラウザでお試しください。';
+    el.emptyAction.hidden = true;
+    return;
+  }
+  await openWork(urlWorkId() || ui.lastWork);
+  document.body.classList.remove('loading');
+  if (report.works || report.refs) {
+    const parts = [];
+    if (report.works) parts.push(`原稿（${report.works}作品・${report.episodes}話）`);
+    if (report.refs) parts.push(`資料${report.refs}件（作品「${report.refsWork}」に登録）`);
+    setStatus('以前のデータを移行しました');
+    alert(`保存先を新しい形式（IndexedDB）に変更し、${parts.join('と')}を移しました。\n以前のデータもブラウザ内にそのまま残してあります。`);
+  }
+  showStorage();
+}
+window.addEventListener('DOMContentLoaded', init);
