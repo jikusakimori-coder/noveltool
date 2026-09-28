@@ -8,12 +8,15 @@
 
 const DB = (() => {
   const NAME = 'noveltool';
-  const VERSION = 1;
+  const VERSION = 2; // 2: 章（chapters）を追加
   const LEGACY_DATA_KEY = 'noveltool.data.v1'; // 旧版（localStorage）の原稿
   const LEGACY_UI_KEY = 'noveltool.ui.v1';
   const LEGACY_REFS_DB = 'noveltool-refs'; // 旧版の資料
 
   let dbPromise = null;
+  let versionHook = null;
+  let closedHook = null;
+  let blockedHook = null;
 
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
@@ -28,21 +31,30 @@ const DB = (() => {
     if (!dbPromise) {
       dbPromise = new Promise((resolve, reject) => {
         const r = indexedDB.open(NAME, VERSION);
-        r.onupgradeneeded = () => {
+        r.onupgradeneeded = (e) => {
           const db = r.result;
-          db.createObjectStore('works', { keyPath: 'id' });
-          db.createObjectStore('episodes', { keyPath: 'id' }).createIndex('workId', 'workId');
-          db.createObjectStore('refs', { keyPath: 'id' }).createIndex('workId', 'workId');
-          db.createObjectStore('meta', { keyPath: 'key' });
+          if (e.oldVersion < 1) {
+            db.createObjectStore('works', { keyPath: 'id' });
+            db.createObjectStore('episodes', { keyPath: 'id' }).createIndex('workId', 'workId');
+            db.createObjectStore('refs', { keyPath: 'id' }).createIndex('workId', 'workId');
+            db.createObjectStore('meta', { keyPath: 'key' });
+          }
+          // 既存の話は chapterId を持たない＝「章なし」としてそのまま引き継ぐ
+          if (e.oldVersion < 2) db.createObjectStore('chapters', { keyPath: 'id' }).createIndex('workId', 'workId');
         };
         r.onsuccess = () => {
           const db = r.result;
-          // 新しい版のページが開かれたら接続を譲る
-          db.onversionchange = () => db.close();
+          // 新しい版のページが別タブで開かれたら、未保存の内容を保存してから接続を譲る
+          db.onversionchange = async () => {
+            try { if (versionHook) await versionHook(); } catch (e) { console.error(e); }
+            db.close();
+            if (closedHook) closedHook();
+          };
           resolve(db);
         };
         r.onerror = () => reject(r.error);
-        r.onblocked = () => reject(new Error('データベースが別のタブで使用中です'));
+        // 古い版のタブが接続を閉じるまで待つ（閉じれば自動で続行する）
+        r.onblocked = () => { if (blockedHook) blockedHook(); };
       });
     }
     return dbPromise;
@@ -177,8 +189,9 @@ const DB = (() => {
   }
 
   function deleteWork(id) {
-    return run(['works', 'episodes', 'refs'], 'readwrite', async (s) => {
+    return run(['works', 'chapters', 'episodes', 'refs'], 'readwrite', async (s) => {
       s.works.delete(id);
+      for (const k of await req(s.chapters.index('workId').getAllKeys(id))) s.chapters.delete(k);
       for (const k of await req(s.episodes.index('workId').getAllKeys(id))) s.episodes.delete(k);
       for (const k of await req(s.refs.index('workId').getAllKeys(id))) s.refs.delete(k);
     });
@@ -221,13 +234,51 @@ const DB = (() => {
     });
   }
 
-  // 並び順だけを書き換える（本文には触れない）
-  function setOrders(list) {
+  // 所属する章と並び順だけを書き換える（本文には触れない）
+  function setPlacements(list) {
     return run('episodes', 'readwrite', async (s) => {
-      for (const { id, order } of list) {
+      for (const { id, order, chapterId } of list) {
         const cur = await req(s.episodes.get(id));
-        if (cur && cur.order !== order) s.episodes.put({ ...cur, order });
+        if (cur && (cur.order !== order || (cur.chapterId || null) !== chapterId)) s.episodes.put({ ...cur, order, chapterId });
       }
+    });
+  }
+
+  /* ---------- 章 ---------- */
+
+  async function chapters(workId) {
+    const list = await run('chapters', 'readonly', (s) => req(s.chapters.index('workId').getAll(workId)));
+    return list.sort(byOrder);
+  }
+
+  function putChapter(ch) {
+    return run('chapters', 'readwrite', (s) => { s.chapters.put({ ...ch }); });
+  }
+
+  function setChapterOrders(list) {
+    return run('chapters', 'readwrite', async (s) => {
+      for (const { id, order } of list) {
+        const cur = await req(s.chapters.get(id));
+        if (cur && cur.order !== order) s.chapters.put({ ...cur, order });
+      }
+    });
+  }
+
+  // mode: 'delete' = 中の話も削除 / 'unassign' = 中の話を「章なし」の最後へ移す
+  function deleteChapter(id, mode) {
+    return run(['chapters', 'episodes'], 'readwrite', async (s) => {
+      const ch = await req(s.chapters.get(id));
+      if (!ch) return [];
+      const all = await req(s.episodes.index('workId').getAll(ch.workId));
+      const inside = all.filter((e) => e.chapterId === id).sort(byOrder);
+      if (mode === 'delete') {
+        for (const e of inside) s.episodes.delete(e.id);
+      } else {
+        let order = all.filter((e) => !e.chapterId).reduce((m, e) => Math.max(m, e.order), -1) + 1;
+        for (const e of inside) s.episodes.put({ ...e, chapterId: null, order: order++ });
+      }
+      s.chapters.delete(id);
+      return inside.map((e) => e.id);
     });
   }
 
@@ -275,37 +326,53 @@ const DB = (() => {
 
   /* ---------- 作品単位の書き出し・読み込み ---------- */
 
+  // 作品の本文（章と話）を読み出す。資料は含めない。
   async function exportWork(id) {
-    return run(['works', 'episodes', 'refs'], 'readonly', async (s) => {
+    return run(['works', 'chapters', 'episodes'], 'readonly', async (s) => {
       const w = await req(s.works.get(id));
       if (!w) return null;
+      const chs = (await req(s.chapters.index('workId').getAll(id))).sort(byOrder);
       const eps = (await req(s.episodes.index('workId').getAll(id))).sort(byOrder);
-      const rs = (await req(s.refs.index('workId').getAll(id))).sort((a, b) => a.name.localeCompare(b.name, 'ja', { numeric: true }));
-      return { ...w, episodes: eps, refs: rs };
+      return { ...w, chapters: chs, episodes: eps };
     });
   }
 
-  // replace=true なら同じIDの作品の原稿と資料を入れ替える。false なら新しい作品として追加。
+  // data: { id, title, chapters: [{ title }], episodes: [{ title, body, chapter: 章の番号 or null }], refs? }
+  // replace=true なら同じIDの作品の章と話を入れ替える（資料はそのまま）。false なら新しい作品として追加。
   function importWork(data, replace) {
     const now = Date.now();
-    return run(['works', 'episodes', 'refs'], 'readwrite', async (s) => {
+    return run(['works', 'chapters', 'episodes', 'refs'], 'readwrite', async (s) => {
       const all = await req(s.works.getAll());
       const existing = data.id ? all.find((w) => w.id === data.id) : null;
       let work;
       if (existing && replace) {
+        for (const k of await req(s.chapters.index('workId').getAllKeys(existing.id))) s.chapters.delete(k);
         for (const k of await req(s.episodes.index('workId').getAllKeys(existing.id))) s.episodes.delete(k);
-        for (const k of await req(s.refs.index('workId').getAllKeys(existing.id))) s.refs.delete(k);
         work = { ...existing, title: data.title };
       } else {
         const id = data.id && !existing ? data.id : uid();
         work = { id, title: data.title, order: all.reduce((m, w) => Math.max(m, w.order), -1) + 1, created: now };
       }
       s.works.put(work);
-      data.episodes.forEach((e, i) => {
-        s.episodes.put({ id: uid(), workId: work.id, title: e.title, body: e.body, order: i, created: now + i, updated: now, rev: 1 });
+      const chIds = (data.chapters || []).map((c, i) => {
+        const id = uid();
+        s.chapters.put({ id, workId: work.id, title: c.title, order: i, created: now + i });
+        return id;
       });
-      for (const r of data.refs || []) {
-        s.refs.put({ id: uid(), workId: work.id, name: r.name, path: r.name, text: r.text, updated: now });
+      const counters = new Map();
+      data.episodes.forEach((e, i) => {
+        const chapterId = e.chapter !== null && e.chapter !== undefined && chIds[e.chapter] ? chIds[e.chapter] : null;
+        const order = counters.get(chapterId) || 0;
+        counters.set(chapterId, order + 1);
+        s.episodes.put({ id: uid(), workId: work.id, chapterId, title: e.title, body: e.body, order, created: now + i, updated: now, rev: 1 });
+      });
+      // 以前の形式のファイルに資料が入っていた場合は、同じ名前を上書きして取り込む
+      if (data.refs && data.refs.length) {
+        const byName = new Map((await req(s.refs.index('workId').getAll(work.id))).map((r) => [r.name, r]));
+        for (const r of data.refs) {
+          const old = byName.get(r.name);
+          s.refs.put({ id: old ? old.id : uid(), workId: work.id, name: r.name, path: r.name, text: r.text, updated: now });
+        }
       }
       return work;
     });
@@ -326,11 +393,14 @@ const DB = (() => {
     if (channel) channel.postMessage({ ...msg, from: TAB_ID });
   }
   function onMessage(fn) { listeners.push(fn); }
+  function onVersionChange(beforeClose, afterClose) { versionHook = beforeClose; closedHook = afterClose; }
+  function onBlocked(fn) { blockedHook = fn; }
 
   return {
     uid, init, works, putWork, createWork, deleteWork,
-    episodes, addEpisode, saveEpisode, setOrders, deleteEpisode, getEpisode,
+    episodes, addEpisode, saveEpisode, setPlacements, deleteEpisode, getEpisode,
+    chapters, putChapter, setChapterOrders, deleteChapter,
     refs, upsertRefs, deleteRefs, deleteAllRefs,
-    exportWork, importWork, notify, onMessage, TAB_ID,
+    exportWork, importWork, notify, onMessage, onVersionChange, onBlocked, TAB_ID,
   };
 })();
