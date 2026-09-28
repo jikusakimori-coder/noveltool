@@ -10,6 +10,11 @@
 </head>
 <body data-view="edit" class="loading">
 
+<div id="updateBanner" class="update-banner" hidden>
+  <span>このツールの新しい版が別のタブで開かれたため、このタブでは保存できなくなりました（ここまでの内容は保存済みです）。再読み込みしてください。</span>
+  <button id="reloadBtn" class="btn small" type="button">再読み込み</button>
+</div>
+
 <header class="topbar">
   <button id="menuBtn" class="icon-btn only-narrow" type="button" aria-label="話の一覧を開く">☰</button>
   <nav id="workTabs" class="work-tabs" aria-label="作品の切り替え"></nav>
@@ -32,17 +37,21 @@
       </div>
       <div class="work-actions">
         <button id="renameWork" type="button">名前を変更</button>
-        <button id="exportWork" type="button">この作品を書き出し</button>
+        <button id="exportWork" type="button">この作品を書き出し…</button>
         <button id="deleteWork" type="button" class="danger">作品を削除</button>
       </div>
     </div>
-    <ol id="epList" class="eps"></ol>
-    <button id="addEp" class="add-ep" type="button">＋ 話を追加</button>
+    <ol id="epList" class="toc"></ol>
+    <div class="side-add">
+      <button id="addEp" class="add-ep" type="button">＋ 話を追加</button>
+      <button id="addChapter" class="add-ep" type="button">＋ 章を追加</button>
+    </div>
     <div class="side-foot">
-      <button id="exportAll" class="btn" type="button">全作品を書き出し</button>
       <button id="importBtn" class="btn" type="button">書き出したファイルを読み込み</button>
-      <input id="importFile" type="file" accept=".txt,text/plain" hidden>
-      <p class="note">原稿と資料はこのブラウザ内に自動保存されます。書き出したファイルには原稿と資料の両方が入ります。機種変更やブラウザのデータ削除に備えて、ときどき書き出してください。</p>
+      <button id="importFolderBtn" class="btn small" type="button">書き出したフォルダ（ZIPを展開したもの）を読み込み</button>
+      <input id="importFile" type="file" accept=".txt,.zip,text/plain,application/zip" hidden>
+      <input id="importFolder" type="file" webkitdirectory multiple hidden>
+      <p class="note">原稿と資料はこのブラウザ内に自動保存されます。機種変更やブラウザのデータ削除に備えて、作品ごとにときどき書き出してください（書き出すのは本文だけで、資料は含みません）。</p>
       <p id="storageInfo" class="note"></p>
     </div>
   </aside>
@@ -58,6 +67,7 @@
     <section id="workspace" class="workspace" hidden>
       <div class="ep-head">
         <input id="epTitle" class="ep-title" type="text" placeholder="話のタイトル" aria-label="話のタイトル">
+        <select id="epChapter" class="ep-chapter" aria-label="この話の章" title="この話を入れる章" hidden></select>
         <div class="ep-actions">
           <button id="epUp" class="icon-btn" type="button" title="前へ移動" aria-label="前へ移動">↑</button>
           <button id="epDown" class="icon-btn" type="button" title="後ろへ移動" aria-label="後ろへ移動">↓</button>
@@ -120,6 +130,35 @@
   </div>
 </div>
 
+<dialog id="exportDialog" class="dialog">
+  <form method="dialog">
+    <h3 id="exportTitle">書き出し</h3>
+    <p class="note">本文だけを書き出します（資料は含みません）。ルビや傍点はカクヨム記法のまま残ります。書き出したファイルは、このツールで読み込むと章と話の構成ごと元に戻せます。</p>
+    <div class="choices">
+      <label class="choice"><input type="radio" name="exportFormat" value="zip" checked>
+        <span><b>1話ずつ別々のテキストファイル（ZIP）</b><small>章ごとのフォルダに分けて保存します。<br>例：作品名_001_話タイトル.txt</small></span></label>
+      <label class="choice"><input type="radio" name="exportFormat" value="single">
+        <span><b>作品全体を1つのテキストファイル</b><small>章タイトル・話タイトルを見出し（【章】【話】）として挟みます。</small></span></label>
+    </div>
+    <div class="dialog-actions">
+      <button value="cancel" class="btn">キャンセル</button>
+      <button value="ok" class="btn primary">書き出す</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="chapterDialog" class="dialog">
+  <form method="dialog">
+    <h3>章の削除</h3>
+    <p id="chapterMsg"></p>
+    <div class="dialog-actions">
+      <button value="cancel" class="btn">キャンセル</button>
+      <button value="delete" class="btn danger">中の話も削除する</button>
+      <button value="unassign" class="btn primary">中の話を「章なし」に移す</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="importDialog" class="dialog">
   <form method="dialog">
     <h3>書き出したファイルの読み込み</h3>
@@ -127,7 +166,7 @@
     <ul id="importList" class="import-list"></ul>
     <fieldset id="importModeBox" class="import-mode">
       <legend>同じ作品がすでにあるとき</legend>
-      <label><input type="radio" name="importMode" value="replace" checked> 上書きする（その作品の原稿と資料を、ファイルの内容に置き換え）</label>
+      <label><input type="radio" name="importMode" value="replace" checked> 上書きする（その作品の章と話を、ファイルの内容に置き換え。資料はそのまま）</label>
       <label><input type="radio" name="importMode" value="add"> 別の作品として追加する</label>
     </fieldset>
     <div class="dialog-actions">
@@ -138,6 +177,7 @@
 </dialog>
 
 <script src="db.js"></script>
+<script src="zip.js"></script>
 <script src="app.js"></script>
 <script src="refs.js"></script>
 </body>

@@ -155,8 +155,55 @@ button { cursor: pointer; }
 .work-actions button { border: 0; background: transparent; color: var(--muted); font-size: 12px; padding: 4px 6px; border-radius: 6px; }
 .work-actions button:hover { background: var(--panel-2); color: var(--text); }
 .work-actions button.danger:hover { color: var(--danger); }
-.eps { list-style: none; margin: 0; padding: 4px 8px 0; }
-.add-ep { display: block; margin: 2px 8px 12px; border: 0; background: transparent; color: var(--accent); font-size: 13px; padding: 6px 8px; border-radius: 6px; text-align: left; }
+/* 目次（章と話） */
+.toc, .grp-eps { list-style: none; margin: 0; padding: 0; }
+.toc { padding: 4px 8px 0; }
+.grp + .grp { margin-top: 6px; }
+.grp.empty:not(.chapter) { display: none; }
+body.ep-dragging .grp.empty:not(.chapter) { display: block; }
+.grp-head {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 2px 4px 0; min-height: 36px;
+  border-radius: 8px;
+}
+.grp-head .name { flex: 1; min-width: 0; font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grp-head .cnt { font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.grp-head.nochap { padding-left: 8px; }
+.grp-head.nochap .name { font-weight: 600; color: var(--muted); font-size: 13px; }
+.chev-btn { border: 0; background: transparent; color: var(--muted); width: 28px; height: 32px; border-radius: 6px; flex: none; transition: transform .15s; transform: rotate(90deg); }
+.grp.collapsed .chev-btn { transform: none; }
+.chev-btn:hover { background: var(--panel-2); }
+.ch-menu-btn { min-width: 30px; min-height: 30px; padding: 0 6px; color: var(--muted); }
+.grp.chapter > .grp-eps { padding-left: 12px; }
+.grp.collapsed > .grp-eps { display: none; }
+.ch-actions { display: flex; flex-wrap: wrap; gap: 2px; padding: 0 4px 6px 30px; }
+.ch-actions button { border: 0; background: var(--panel-2); color: var(--text); font-size: 12px; padding: 5px 8px; border-radius: 6px; }
+.ch-actions button:hover { background: var(--accent-soft); }
+.ch-actions button.danger { color: var(--danger); }
+.ch-actions button:disabled { opacity: .4; cursor: default; }
+.grp-empty { font-size: 12px; color: var(--muted); padding: 8px 10px; border: 1px dashed var(--line); border-radius: 8px; margin: 2px 0 4px; }
+
+.ep-row { display: flex; align-items: center; position: relative; }
+.ep-row .row-btn { flex: 1; min-width: 0; }
+.drag {
+  flex: none; width: 20px; align-self: stretch;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--line); font-size: 12px; letter-spacing: -2px;
+  cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+  border-radius: 6px;
+}
+.ep-row:hover .drag, .drag:focus { color: var(--muted); }
+body.ep-dragging, body.ep-dragging * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+.ep-row.dragging { opacity: .4; }
+.ep-row.drop-before::before, .ep-row.drop-after::after {
+  content: ""; position: absolute; left: 20px; right: 0; height: 3px; border-radius: 2px; background: var(--accent);
+}
+.ep-row.drop-before::before { top: -2px; }
+.ep-row.drop-after::after { bottom: -2px; }
+.drop-into { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-soft); border-radius: 8px; }
+
+.side-add { display: flex; flex-wrap: wrap; gap: 0 4px; margin: 4px 8px 12px; }
+.add-ep { display: block; border: 0; background: transparent; color: var(--accent); font-size: 13px; padding: 6px 8px; border-radius: 6px; text-align: left; }
 .add-ep:hover { background: var(--panel-2); }
 
 .row-btn {
@@ -171,7 +218,6 @@ button { cursor: pointer; }
 .ep .no { color: var(--muted); font-size: 12px; min-width: 1.6em; font-variant-numeric: tabular-nums; }
 .ep.current { background: var(--accent-soft); }
 .ep.current .name { font-weight: 600; }
-.add-ep:hover { background: var(--panel-2); }
 
 .scrim { display: none; }
 
@@ -223,6 +269,8 @@ body[data-view="split"] .editor { border-right: 1px solid var(--line); }
 
 /* ---------- プレビュー本文 ---------- */
 .preview .pv-title { font-size: 1.2em; margin: 0 0 1.5em; font-weight: 700; }
+.preview .pv-chapter { margin: 0 0 .4em; color: var(--muted); font-size: .9em; }
+.preview.vertical .pv-chapter { margin: 0 0 0 .6em; }
 .preview p { margin: 0; white-space: pre-wrap; }
 .preview .pv-body { max-width: 40em; }
 .preview rt { font-size: .5em; }
@@ -418,6 +466,31 @@ body.loading .layout, body.loading .work-tabs { visibility: hidden; }
 .import-mode legend { color: var(--muted); padding: 0 4px; }
 .import-mode label { display: flex; gap: 6px; align-items: flex-start; }
 
+
+/* 話の章を選ぶ */
+.ep-chapter {
+  flex: none; max-width: 11em;
+  border: 1px solid var(--line); background: var(--panel); color: var(--text);
+  border-radius: 8px; padding: 4px 6px; min-height: 34px; font-size: 13px;
+}
+
+/* 新しい版が開かれたとき */
+.update-banner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 12px; background: var(--danger); color: #fff; font-size: 13px; flex: none;
+}
+.update-banner span { flex: 1; min-width: 14em; }
+.update-banner .btn { color: var(--text); }
+
+/* 書き出し形式 */
+.choices { display: grid; gap: 8px; margin: 12px 0 0; }
+.choice { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.choice input { margin-top: 3px; accent-color: var(--accent); width: 18px; height: 18px; flex: none; }
+.choice span { display: flex; flex-direction: column; gap: 2px; }
+.choice small { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.import-warn { padding: 8px 10px; font-size: 12px; color: var(--danger); }
+
 /* ---------- ダイアログ ---------- */
 .dialog {
   border: 1px solid var(--line);
@@ -477,6 +550,8 @@ body.loading .layout, body.loading .work-tabs { visibility: hidden; }
   .ref-body { padding: 14px 16px; }
 }
 @media (max-width: 520px) {
+  .count-chapter { display: none; }
+  .ep-chapter { max-width: 7.5em; }
   .topbar { gap: 8px; padding-left: 8px; padding-right: 8px; }
   .save-status { display: none; }
   .save-status.error { display: inline; }
