@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1a18" media="(prefers-color-scheme: dark)">
+<title>年表ツール</title>
+<link rel="stylesheet" href="timeline.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="back" href="../" title="執筆ツールへ戻る">← 執筆ツール</a>
+  <h1 class="app-name">年表</h1>
+  <select id="workSel" class="work-sel" aria-label="年表の切り替え"></select>
+  <button id="newWork" class="btn small" type="button">＋ 新しい年表</button>
+  <button id="settingsBtn" class="btn small" type="button">設定</button>
+  <span class="spacer"></span>
+  <button id="exportMd" class="btn small" type="button" title="この年表をMarkdownで書き出し">MD書き出し</button>
+  <button id="exportCsv" class="btn small" type="button" title="この年表をCSVで書き出し">CSV書き出し</button>
+  <button id="importBtn" class="btn small" type="button" title="書き出したMD／CSVを読み込んで復元">読み込み</button>
+  <input id="importFile" type="file" accept=".md,.markdown,.csv,.txt,text/markdown,text/csv,text/plain" hidden>
+</header>
+
+<div class="toolbar" id="toolbar">
+  <div class="tool-group">
+    <span class="lbl">表示</span>
+    <div id="partSeg" class="seg scroll" role="tablist" aria-label="表示する部"></div>
+  </div>
+  <div class="tool-group">
+    <span class="lbl">列</span>
+    <div class="seg" aria-label="列の並べ方">
+      <button type="button" data-layout="parts">部ごと</button>
+      <button type="button" data-layout="people">人物ごと</button>
+    </div>
+  </div>
+  <div class="tool-group">
+    <span class="lbl">絞り込み</span>
+    <details id="peopleFilter" class="pop">
+      <summary class="btn small" id="peopleSum">人物：すべて</summary>
+      <div class="pop-body">
+        <div id="peopleList" class="check-list"></div>
+        <div class="pop-actions"><button id="peopleClear" class="btn small" type="button">すべて表示</button></div>
+      </div>
+    </details>
+    <select id="placeSel" class="sel" aria-label="場所で絞り込み"></select>
+  </div>
+  <button id="addEvent" class="btn primary small add-ev" type="button">＋ できごと</button>
+</div>
+
+<main class="main">
+  <section id="empty" class="empty" hidden>
+    <p id="emptyMsg"></p>
+    <button id="emptyAction" class="btn primary" type="button"></button>
+  </section>
+  <div id="gridWrap" class="grid-wrap" tabindex="0" aria-label="年表"></div>
+</main>
+
+<!-- できごとの入力 -->
+<dialog id="evDialog" class="dialog wide">
+  <form method="dialog" id="evForm">
+    <h3 id="evTitle">できごと</h3>
+    <div class="form-grid">
+      <label class="fld">
+        <span>日付</span>
+        <span class="date-row"><input id="evDate" type="date" required><b id="evWd" class="wd"></b></span>
+      </label>
+      <label class="fld">
+        <span>時刻（任意）</span>
+        <span class="date-row"><input id="evTime" type="time"><button id="evTimeClear" class="btn small" type="button">なし</button></span>
+      </label>
+      <label class="fld full">
+        <span>できごと</span>
+        <input id="evText" type="text" required autocomplete="off">
+      </label>
+      <div class="fld full">
+        <span>登場人物（複数可。Enter で追加）</span>
+        <div class="tokens" id="evPeopleBox">
+          <span id="evPeopleChips"></span>
+          <input id="evPeopleIn" type="text" list="peopleDl" autocomplete="off" placeholder="名前">
+        </div>
+        <div id="evPeopleSug" class="sug"></div>
+      </div>
+      <label class="fld">
+        <span>場所</span>
+        <input id="evPlace" type="text" list="placeDl" autocomplete="off">
+      </label>
+      <label class="fld">
+        <span>関連する話（任意）</span>
+        <input id="evEpisode" type="text" list="episodeDl" autocomplete="off">
+      </label>
+      <div class="fld full">
+        <span id="evPartsLbl">部</span>
+        <p id="evSideNote" class="note"></p>
+        <div id="evParts" class="part-checks"></div>
+      </div>
+      <label class="fld full">
+        <span>メモ</span>
+        <textarea id="evMemo" rows="3"></textarea>
+      </label>
+    </div>
+    <datalist id="peopleDl"></datalist>
+    <datalist id="placeDl"></datalist>
+    <datalist id="episodeDl"></datalist>
+    <div class="dialog-actions">
+      <button id="evDelete" class="btn danger left" type="button">削除</button>
+      <button id="evDup" class="btn" type="button" title="同じ日時・人物・場所で新しいできごとを作る">同じ日時でもう1件</button>
+      <button value="cancel" class="btn" formnovalidate>キャンセル</button>
+      <button value="ok" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 年表の設定 -->
+<dialog id="setDialog" class="dialog wide">
+  <form method="dialog" id="setForm">
+    <h3 id="setTitle">年表の設定</h3>
+    <div class="form-grid">
+      <label class="fld full">
+        <span>作品名</span>
+        <input id="setName" type="text" required autocomplete="off">
+      </label>
+      <label class="fld">
+        <span>起点の日付</span>
+        <span class="date-row"><input id="setOrigin" type="date" required><b id="setOriginWd" class="wd"></b></span>
+      </label>
+      <label class="fld">
+        <span>起点の時刻（任意）</span>
+        <span class="date-row"><input id="setOriginTime" type="time"><button id="setOriginTimeClear" class="btn small" type="button">なし</button></span>
+      </label>
+      <p class="note full">起点より前のできごとは全部に共通、起点以降は部ごとのルートに分かれます。起点の時刻を決めた場合、起点の日のその時刻より前（時刻のあるできごと）は共通になります。</p>
+      <div class="fld full">
+        <span>部と、それぞれが描いている期間</span>
+        <div id="setParts" class="part-rows"></div>
+        <button id="setAddPart" class="btn small" type="button">＋ 部を追加</button>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button id="setDelete" class="btn danger left" type="button">この年表を削除</button>
+      <button value="cancel" class="btn" formnovalidate>キャンセル</button>
+      <button value="ok" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 読み込み -->
+<dialog id="importDialog" class="dialog">
+  <form method="dialog">
+    <h3>年表の読み込み</h3>
+    <p id="importMsg"></p>
+    <div class="dialog-actions">
+      <button value="cancel" class="btn">キャンセル</button>
+      <button value="add" id="importAdd" class="btn">別の年表として追加</button>
+      <button value="replace" id="importReplace" class="btn primary">上書きする</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="timeline.js"></script>
+</body>
+</html>
