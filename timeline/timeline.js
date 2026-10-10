@@ -285,19 +285,20 @@ function cardHtml(ev, w, opt) {
   const side = sideOf(w, ev.date, ev.time);
   const color = opt.color || (ev.parts.length === 1 && partOf(w, ev.parts[0]) ? partOf(w, ev.parts[0]).color : '');
   let h = `<div class="ev" role="button" tabindex="0" data-id="${esc(ev.id)}"${color ? ` style="--evc:${esc(color)}"` : ''}>`;
-  h += `<div class="tt">${opt.showTime && ev.time ? `<span class="tm">${esc(ev.time)}</span>` : ''}${esc(ev.text)}</div>`;
+  h += `<div class="tt">${ev.time ? `<span class="tm">${esc(ev.time)}</span>` : ''}${esc(ev.text)}</div>`;
   const meta = [];
-  const people = opt.hidePerson ? ev.people.filter((p) => p !== opt.hidePerson) : ev.people;
-  people.forEach((p) => meta.push(`<span class="person">${esc(p)}</span>`));
+  ev.people.forEach((p) => meta.push(`<span class="person${opt.colPeople && opt.colPeople.includes(p) ? ' col' : ''}">${esc(p)}</span>`));
   if (ev.place) meta.push(`<span>📍${esc(ev.place)}</span>`);
   if (ev.episode) meta.push(`<span>📖${esc(ev.episode)}</span>`);
   if (meta.length) h += `<div class="meta">${meta.join('')}</div>`;
   if (opt.marks) {
+    // opt.marks === 'others'：この列の部以外に描写・ルートがある部だけ表示する
+    const others = opt.marks === 'others';
     const marks = ev.parts.map((id) => partOf(w, id)).filter(Boolean)
-      .filter((p) => !opt.skipMark || p.id !== opt.skipMark)
+      .filter((p) => !others || p.id !== opt.skipMark)
       .map((p) => `<span class="mark${side === 'route' ? ' route' : ''}" style="--c:${esc(p.color)}" title="${side === 'route' ? `${esc(p.name)}のルート` : `${esc(p.name)}で描写`}">${side === 'route' ? '' : '描写：'}${esc(p.name)}</span>`);
-    if (!ev.parts.length && opt.marks !== 'others') marks.push(`<span class="mark none">${side === 'route' ? 'ルート未選択' : '描写する部なし'}</span>`);
-    if (marks.length) h += `<div class="marks">${opt.marks === 'others' ? '<span class="mark none">ほかに</span>' : ''}${marks.join('')}</div>`;
+    if (!ev.parts.length && !others) marks.push(`<span class="mark none">${side === 'route' ? 'ルート未選択' : '描写する部なし'}</span>`);
+    if (marks.length) h += `<div class="marks">${others ? '<span class="mark-lbl">ほかに</span>' : ''}${marks.join('')}</div>`;
   }
   const notes = opt.notePart ? [opt.notePart] : ev.parts;
   for (const pid of notes) {
@@ -318,6 +319,12 @@ function filteredEvents(w, v) {
   }).sort(cmpEv);
 }
 
+// 部に期間が決めてあり、その日が期間の外なら true
+function outOfPeriod(p, date) { return !!(p.from || p.to) && !inPeriod(p, date); }
+
+// 人物ごと表示で列にする人物（設定で選んだ順）
+function columnPeople(w) { return Array.isArray(w.columnPeople) ? w.columnPeople : []; }
+
 function renderGrid() {
   const w = curWork();
   const v = view();
@@ -325,12 +332,15 @@ function renderGrid() {
   el.grid.hidden = false;
   const evs = filteredEvents(w, v);
   const viewParts = v.part ? [partOf(w, v.part)] : w.parts;
+  const people = v.layout === 'people';
 
-  // 行：日付＋時刻ごと。部の期間の始まり・終わりの日にも行を作る
+  // 行：日付ごと（起点の日は起点の前後で分ける）。同じ日のできごとは同じ行に時刻順に並ぶので、各列の上端がそろう。
+  // 部の期間の始まり・終わりの日にも行を作る
   const rows = new Map();
   const rowOf = (date, time) => {
-    const k = `${date}|${time}`;
-    if (!rows.has(k)) rows.set(k, { date, time, side: sideOf(w, date, time), events: [] });
+    const side = sideOf(w, date, time);
+    const k = `${date}|${side}`;
+    if (!rows.has(k)) rows.set(k, { date, side, events: [] });
     return rows.get(k);
   };
   evs.forEach((ev) => rowOf(ev.date, ev.time).events.push(ev));
@@ -346,23 +356,25 @@ function renderGrid() {
       if (![...rows.values()].some((r) => r.date === d)) rowOf(d, '');
     }
   }
-  const list = [...rows.values()].sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+  const sideRank = (s) => (s === 'common' ? 0 : 1);
+  const list = [...rows.values()].sort((a, b) => a.date.localeCompare(b.date) || sideRank(a.side) - sideRank(b.side));
 
   // 列
+  const colPeople = columnPeople(w);
   let cols;
-  if (v.layout === 'people') {
-    const names = v.people.length ? v.people : allPeople().filter((p) => evs.some((e) => e.people.includes(p)));
-    cols = names.map((n) => ({ kind: 'person', name: n }));
-    if (!cols.length) cols = [{ kind: 'nobody' }];
+  if (people) {
+    cols = colPeople.map((n) => ({ kind: 'person', name: n }));
+    cols.push({ kind: 'others' });
   } else if (v.part) {
     cols = [{ kind: 'part', part: partOf(w, v.part) }];
   } else {
-    cols = w.parts.map((p) => ({ kind: 'part', part: p }));
-    if (!cols.length || evs.some((e) => e.parts.length === 0 && sideOf(w, e.date, e.time) === 'route')) cols.push({ kind: 'none' });
+    cols = [{ kind: 'common' }, ...w.parts.map((p) => ({ kind: 'part', part: p }))];
   }
-  const wideCommon = v.layout === 'parts' && !v.part;
+  // 帯の列は人物ごと表示だけ（部ごと表示では列そのものを期間外でグレーにする）
+  const showBand = people && w.parts.length > 0;
   const bandW = Math.max(12, w.parts.length * 8 + 6);
-  const bandStyle = `width:${bandW}px;min-width:${bandW}px;max-width:${bandW}px`;
+  const colW = (c) => (c.kind === 'common' ? 'var(--w-common)' : 'var(--w-col)');
+  const tableW = `calc(var(--w-date)${showBand ? ` + ${bandW}px` : ''}${cols.map((c) => ` + ${colW(c)}`).join('')})`;
 
   const bandsHtml = (date, head) => `<div class="bands">${w.parts.map((p) => {
     if (head) return `<span class="band" style="--c:${esc(p.color)}" title="${esc(p.name)}"></span>`;
@@ -375,65 +387,63 @@ function renderGrid() {
     if (c.kind === 'part') {
       const p = c.part;
       const period = p.from || p.to ? `<span class="sub">${esc(fmtDate(p.from) || '…')}〜${esc(fmtDate(p.to) || '…')}</span>` : '';
-      return `<th class="col"><span class="dot" style="background:${esc(p.color)}"></span>${esc(p.name)}${v.part ? '<span class="sub">で描写するできごと＋ルート</span>' : ''}${period}</th>`;
+      return `<th class="col" title="${esc(p.name)}${v.part ? 'で描写するできごと＋ルート' : ''}"><span class="dot" style="background:${esc(p.color)}"></span>${esc(p.name)}${period}</th>`;
     }
     if (c.kind === 'person') return `<th class="col">${esc(c.name)}</th>`;
-    if (c.kind === 'nobody') return '<th class="col">（人物が登録されたできごとがありません）</th>';
-    return `<th class="col">${w.parts.length ? '（ルート未選択）' : 'できごと'}</th>`;
+    if (c.kind === 'others') return `<th class="col" title="列にした人物が関わらないできごと">その他${colPeople.length ? '' : '<span class="sub">（設定で列にする人物を選べます）</span>'}</th>`;
+    return '<th class="col common" title="どの部でも描写しない／ルートを選んでいないできごと">共通<span class="sub">部の指定なし</span></th>';
   };
 
-  let h = `<table class="grid" style="--bw:${bandW}px"><thead><tr><th class="c-date">日付</th><th class="c-time">時刻</th><th class="c-band" style="${bandStyle}">${bandsHtml('', true)}</th>${cols.map(colHead).join('')}</tr></thead><tbody>`;
+  let h = `<table class="grid" style="width:${tableW}"><colgroup><col style="width:var(--w-date)">${showBand ? `<col style="width:${bandW}px">` : ''}${cols.map((c) => `<col style="width:${colW(c)}">`).join('')}</colgroup>`;
+  h += `<thead><tr><th class="c-date">日付</th>${showBand ? `<th class="c-band">${bandsHtml('', true)}</th>` : ''}${cols.map(colHead).join('')}</tr></thead><tbody>`;
 
   const originRow = () => {
-    const routes = wideCommon ? '各部のルートに分かれます' : (v.part ? `${esc(partOf(w, v.part).name)}のルート` : 'ここから部ごとのルート');
-    return `<tr class="origin"><td class="origin-left" colspan="3">▼ 起点</td><td colspan="${cols.length}">${esc(fmtDate(w.origin))}${w.originTime ? ` ${esc(w.originTime)}` : ''}<span class="sub">${routes}</span></td></tr>`;
+    const routes = v.part ? `${esc(partOf(w, v.part).name)}のルート` : 'ここから部ごとのルートに分かれます';
+    return `<tr class="origin"><td class="origin-left" colspan="${showBand ? 2 : 1}">▼ 起点</td><td colspan="${cols.length}">${esc(fmtDate(w.origin))}${w.originTime ? ` ${esc(w.originTime)}` : ''}<span class="sub">${routes}</span></td></tr>`;
   };
   let originDone = false;
-  list.forEach((r, i) => {
+  for (const r of list) {
     if (!originDone && r.side === 'route') { h += originRow(); originDone = true; }
-    const prev = list[i - 1];
-    const next = list[i + 1];
-    const same = prev && prev.date === r.date && prev.side === r.side;
-    const nextSame = next && next.date === r.date && next.side === r.side;
-    const tags = !same ? [
+    const tags = [
       ...(starts.get(r.date) || []).map((p) => `<span class="ptag" style="--c:${esc(p.color)}">${esc(p.name)} ここから</span>`),
       ...(ends.get(r.date) || []).map((p) => `<span class="ptag" style="--c:${esc(p.color)}">${esc(p.name)} ここまで</span>`),
-    ].join('') : '';
-    const cls = [r.side === 'common' ? 'common' : 'route', same ? 'same-day' : '', nextSame ? 'next-same-day' : '', r.events.length ? '' : 'marker'].filter(Boolean).join(' ');
+    ].join('');
+    const cls = [r.side, r.events.length ? '' : 'marker'].filter(Boolean).join(' ');
     h += `<tr class="${cls}"><td class="c-date"><div class="d">${fmtDateHtml(r.date)}</div>${tags ? `<div class="period-tags">${tags}</div>` : ''}</td>`;
-    h += `<td class="c-time">${esc(r.time)}</td><td class="c-band" style="${bandStyle}">${bandsHtml(r.date)}</td>`;
-    const attrs = (extra) => `data-date="${esc(r.date)}" data-time="${esc(r.time)}"${extra}`;
-    if (r.side === 'common' && wideCommon) {
-      h += `<td class="col wide" colspan="${cols.length}" ${attrs('')}>${r.events.map((ev) => cardHtml(ev, w, { marks: true })).join('')}</td>`;
-    } else {
-      for (const c of cols) {
-        let cell = [];
-        let opt = {};
-        if (c.kind === 'person') {
-          cell = r.events.filter((e) => e.people.includes(c.name));
-          opt = { marks: true, notePart: v.part || null, hidePerson: c.name };
-        } else if (c.kind === 'part') {
-          cell = r.events.filter((e) => e.parts.includes(c.part.id));
-          opt = { marks: v.part ? false : 'others', skipMark: c.part.id, notePart: c.part.id, color: c.part.color };
-          if (!v.part && cell.length) {
-            // 複数のルートにまたがるできごとだけ、ほかの部を表示する
-            h += `<td class="col" ${attrs(` data-part="${esc(c.part.id)}"`)}>${cell.map((ev) => cardHtml(ev, w, ev.parts.length > 1 ? opt : { ...opt, marks: false })).join('')}</td>`;
-            continue;
-          }
-        } else if (c.kind === 'none') {
-          cell = r.events.filter((e) => e.parts.length === 0);
-          opt = { marks: false };
-        }
-        const extra = c.kind === 'part' ? ` data-part="${esc(c.part.id)}"` : c.kind === 'person' ? ` data-person="${esc(c.name)}"` : '';
-        h += `<td class="col" ${attrs(extra)}>${cell.map((ev) => cardHtml(ev, w, opt)).join('')}</td>`;
+    if (showBand) h += `<td class="c-band">${bandsHtml(r.date)}</td>`;
+    for (const c of cols) {
+      let cell = [];
+      let opt = {};
+      let extra = '';
+      let tdCls = 'col';
+      if (c.kind === 'person') {
+        cell = r.events.filter((e) => e.people.includes(c.name));
+        opt = { marks: true, notePart: v.part || null, colPeople };
+        extra = ` data-person="${esc(c.name)}"`;
+      } else if (c.kind === 'others') {
+        cell = r.events.filter((e) => !e.people.some((p) => colPeople.includes(p)));
+        opt = { marks: true, notePart: v.part || null, colPeople };
+      } else if (c.kind === 'part') {
+        cell = r.events.filter((e) => e.parts.includes(c.part.id));
+        // 補足はこの列の部のものだけ。ほかの部にもまたがるときだけ、その部を印で示す
+        opt = { marks: v.part ? false : 'others', skipMark: c.part.id, notePart: c.part.id, color: c.part.color };
+        extra = ` data-part="${esc(c.part.id)}"`;
+        if (outOfPeriod(c.part, r.date)) tdCls += ' off';
+      } else {
+        cell = r.events.filter((e) => e.parts.length === 0);
+        opt = { marks: false };
+        tdCls += ' common';
       }
+      h += `<td class="${tdCls}" data-date="${esc(r.date)}"${extra}>${cell.map((ev) => cardHtml(ev, w, opt)).join('')}</td>`;
     }
     h += '</tr>';
-  });
+  }
   if (!originDone) h += originRow();
   h += '</tbody></table>';
   if (!evs.length) {
     h += `<p class="note" style="padding:12px">${events.length ? '条件に合うできごとがありません。' : '「＋ できごと」から登録してください。'}</p>`;
+  } else if (people && !colPeople.length) {
+    h += '<p class="note" style="padding:12px">「設定」で列にする人物を選ぶと、人物ごとの列に分かれます。</p>';
   }
   const sx = el.grid.scrollLeft;
   const sy = el.grid.scrollTop;
@@ -700,14 +710,17 @@ evd.dup.addEventListener('click', async () => {
 const sd = {
   dlg: $('#setDialog'), form: $('#setForm'), title: $('#setTitle'), name: $('#setName'),
   origin: $('#setOrigin'), originWd: $('#setOriginWd'), originTime: $('#setOriginTime'),
-  parts: $('#setParts'), del: $('#setDelete'),
+  parts: $('#setParts'), people: $('#setPeople'), del: $('#setDelete'),
 };
-let setting = null; // { id, parts: [] }
+let setting = null; // { id, parts: [], people: [{ name, on }] }
 
 function openSettings(w) {
   setting = w
     ? { id: w.id, parts: w.parts.map((p) => ({ ...p })) }
     : { id: null, parts: ['第一部', '第二部', '第三部', '第四部'].map((name, i) => ({ id: TDB.uid() + i, name, color: PART_COLORS[i], from: '', to: '' })) };
+  // 列にする人物（選んだ順）を先に、残りの人物をその後ろに並べる
+  const cp = w ? columnPeople(w) : [];
+  setting.people = [...cp.map((name) => ({ name, on: true })), ...(w ? allPeople() : []).filter((n) => !cp.includes(n)).map((name) => ({ name, on: false }))];
   sd.title.textContent = w ? '年表の設定' : '新しい年表';
   sd.name.value = w ? w.title : '';
   sd.origin.value = w ? w.origin : '';
@@ -715,6 +728,7 @@ function openSettings(w) {
   setWd(sd.originWd, sd.origin.value);
   sd.del.hidden = !w;
   renderPartRows();
+  renderPeopleRows();
   sd.dlg.showModal();
   if (!w) sd.name.focus();
 }
@@ -730,6 +744,31 @@ function renderPartRows() {
     <span class="pperiod">描いている期間 <input type="date" value="${esc(p.from)}" data-k="from" aria-label="期間の始まり"> <b class="wd wd-${wdIndex(p.from)}">${p.from ? `（${wdOf(p.from)}）` : ''}</b>〜 <input type="date" value="${esc(p.to)}" data-k="to" aria-label="期間の終わり"> <b class="wd wd-${wdIndex(p.to)}">${p.to ? `（${wdOf(p.to)}）` : ''}</b></span>
   </div>`).join('') || '<p class="note">部がありません。</p>';
 }
+function renderPeopleRows() {
+  const ps = setting.people;
+  sd.people.innerHTML = ps.map((p, i) => `<div class="crow${p.on ? ' on' : ''}" data-i="${i}">
+    <label><input type="checkbox"${p.on ? ' checked' : ''}> ${esc(p.name)}</label>
+    <span class="pbtns">
+      <button type="button" class="icon-btn" data-act="up" ${i === 0 ? 'disabled' : ''} aria-label="前へ">↑</button>
+      <button type="button" class="icon-btn" data-act="down" ${i === ps.length - 1 ? 'disabled' : ''} aria-label="後ろへ">↓</button>
+    </span>
+  </div>`).join('') || '<p class="note">まだ人物がいません。できごとに登場人物を入れると、ここに出ます。</p>';
+}
+sd.people.addEventListener('change', (e) => {
+  const row = e.target.closest('.crow');
+  if (!row) return;
+  setting.people[Number(row.dataset.i)].on = e.target.checked;
+  row.classList.toggle('on', e.target.checked);
+});
+sd.people.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  const i = Number(b.closest('.crow').dataset.i);
+  const ps = setting.people;
+  if (b.dataset.act === 'up' && i > 0) [ps[i - 1], ps[i]] = [ps[i], ps[i - 1]];
+  else if (b.dataset.act === 'down' && i < ps.length - 1) [ps[i + 1], ps[i]] = [ps[i], ps[i + 1]];
+  renderPeopleRows();
+});
 sd.parts.addEventListener('input', (e) => {
   const row = e.target.closest('.prow');
   const k = e.target.dataset.k;
@@ -774,10 +813,11 @@ sd.form.addEventListener('submit', async (e) => {
   const bad = setting.parts.find((p) => p.from && p.to && p.from > p.to);
   if (bad) { alert(`「${bad.name}」の期間の始まりが終わりより後になっています。`); return; }
   const parts = setting.parts.map((p) => ({ id: p.id, name: p.name.trim(), color: p.color, from: p.from || '', to: p.to || '' }));
+  const colPeople = setting.people.filter((p) => p.on).map((p) => p.name);
   const old = setting.id ? curWork() : null;
   const w = old
-    ? { ...old, title: sd.name.value.trim(), origin: sd.origin.value, originTime: normTime(sd.originTime.value), parts }
-    : { id: TDB.uid(), title: sd.name.value.trim(), origin: sd.origin.value, originTime: normTime(sd.originTime.value), parts, order: works.reduce((m, x) => Math.max(m, x.order), -1) + 1, created: Date.now() };
+    ? { ...old, title: sd.name.value.trim(), origin: sd.origin.value, originTime: normTime(sd.originTime.value), parts, columnPeople: colPeople }
+    : { id: TDB.uid(), title: sd.name.value.trim(), origin: sd.origin.value, originTime: normTime(sd.originTime.value), parts, columnPeople: colPeople, order: works.reduce((m, x) => Math.max(m, x.order), -1) + 1, created: Date.now() };
   try {
     await TDB.putWork(w);
     if (old) {
@@ -837,7 +877,9 @@ const oneLine = (s) => String(s || '').replace(/[\r\n]+/g, ' ');
 
 function toMarkdown(w) {
   const out = [];
-  out.push(`# 年表：${oneLine(w.title)}`, '', MD_MARK, `- 年表ID：${w.id}`, `- 起点：${fmtDate(w.origin)}${w.originTime ? ' ' + w.originTime : ''}`, '');
+  out.push(`# 年表：${oneLine(w.title)}`, '', MD_MARK, `- 年表ID：${w.id}`, `- 起点：${fmtDate(w.origin)}${w.originTime ? ' ' + w.originTime : ''}`);
+  if (columnPeople(w).length) out.push(`- 列にする人物：${columnPeople(w).map(oneLine).join(LIST_SEP)}`);
+  out.push('');
   out.push('## 部', '', '| 部 | 色 | 描いている期間（始まり） | 描いている期間（終わり） | 部ID |', '|---|---|---|---|---|');
   for (const p of w.parts) out.push(`| ${escCell(p.name)} | ${p.color} | ${fmtDate(p.from)} | ${fmtDate(p.to)} | ${escCell(p.id)} |`);
   out.push('');
@@ -938,6 +980,7 @@ function parseMarkdown(text) {
       const val = m[2].trim();
       if (!ev) {
         if (k === '年表ID') work.id = val;
+        else if (k === '列にする人物') work.columnPeople = splitList(val);
         else if (k === '起点') {
           work.origin = parseDateText(val);
           const tm = /(\d{1,2}:\d{2})/.exec(val.replace(/\d{4,}[-/]\d{1,2}[-/]\d{1,2}/, ''));
@@ -967,7 +1010,7 @@ function csvCell(v) {
 function toCsv(w) {
   const rows = [CSV_COLS];
   const row = (o) => CSV_COLS.map((c) => o[c] || '');
-  rows.push(row({ 種別: '年表', ID: w.id, 日付: w.origin, 曜日: wdOf(w.origin), 時刻: w.originTime, できごと: w.title, 区分: '起点' }));
+  rows.push(row({ 種別: '年表', ID: w.id, 日付: w.origin, 曜日: wdOf(w.origin), 時刻: w.originTime, できごと: w.title, 登場人物: columnPeople(w).join(LIST_SEP), 区分: '起点' }));
   for (const p of w.parts) rows.push(row({ 種別: '部', ID: p.id, 日付: p.from, 曜日: wdOf(p.from), できごと: p.name, 期間の終了: p.to, 色: p.color }));
   for (const e of sortedEvents()) {
     const notes = e.parts.map((id) => partOf(w, id)).filter((p) => p && e.partNotes[p.id]).map((p) => `【${p.name}】${e.partNotes[p.id]}`).join('\n');
@@ -1016,6 +1059,7 @@ function parseCsv(text) {
       work.title = get(r, 'できごと');
       work.origin = parseDateText(get(r, '日付'));
       work.originTime = normTime(get(r, '時刻'));
+      work.columnPeople = splitList(get(r, '登場人物'));
     } else if (kind === '部') {
       work.parts.push({ id: get(r, 'ID'), name: get(r, 'できごと'), color: get(r, '色'), from: parseDateText(get(r, '日付')), to: parseDateText(get(r, '期間の終了')) });
     } else {
@@ -1069,7 +1113,7 @@ function finishImport(work, evs) {
     }
     return { id: e.id || '', date: e.date, time: e.time, text: e.text || '（無題）', people: uniq(e.people), place: e.place, episode: e.episode, memo: e.memo, parts: ids, partNotes, updated: Date.now() };
   });
-  return { work: { id: work.id || '', title: work.title, origin: work.origin, originTime: work.originTime || '', parts }, events };
+  return { work: { id: work.id || '', title: work.title, origin: work.origin, originTime: work.originTime || '', parts, columnPeople: uniq(work.columnPeople || []) }, events };
 }
 
 /* ---------- ボタン ---------- */
