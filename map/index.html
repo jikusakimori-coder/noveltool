@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1a18" media="(prefers-color-scheme: dark)">
+<title>配置図ツール</title>
+<link rel="stylesheet" href="map.css">
+</head>
+<body>
+
+<header class="topbar">
+  <button id="menuBtn" class="icon-btn only-narrow" type="button" aria-label="地図の一覧を開く">☰</button>
+  <a class="back" href="../" title="執筆ツールへ">← 執筆ツール</a>
+  <a class="back" href="../timeline/" id="timelineLink" title="年表ツールへ">年表</a>
+  <h1 class="app-name">配置図</h1>
+  <select id="workSel" class="work-sel" aria-label="作品の切り替え"></select>
+  <button id="newWork" class="btn small" type="button">＋ 新しい作品</button>
+  <button id="workSettings" class="btn small" type="button">作品の設定</button>
+  <span class="spacer"></span>
+  <button id="exportPng" class="btn small" type="button" title="表示中の地図（表示中の階）を画像で保存">PNG保存</button>
+  <button id="exportJson" class="btn small" type="button" title="この作品の地図をすべてJSONで書き出し">JSON書き出し</button>
+  <button id="importBtn" class="btn small" type="button" title="書き出したJSONを読み込んで復元">読み込み</button>
+  <input id="importFile" type="file" accept=".json,application/json" hidden>
+</header>
+
+<div class="layout">
+  <aside id="sidebar" class="sidebar" aria-label="地図と場所">
+    <section class="side-sec">
+      <div class="side-head"><h2>地図</h2><button id="addMap" class="btn small" type="button">＋ 地図</button></div>
+      <ul id="mapList" class="map-list"></ul>
+    </section>
+    <section class="side-sec places">
+      <div class="side-head"><h2>年表の場所</h2></div>
+      <p id="placesNote" class="note"></p>
+      <ul id="placeList" class="place-list"></ul>
+    </section>
+  </aside>
+  <div id="scrim" class="scrim"></div>
+
+  <main class="main">
+    <section id="empty" class="empty" hidden>
+      <p id="emptyMsg"></p>
+      <button id="emptyAction" class="btn primary" type="button"></button>
+    </section>
+
+    <div id="stage" class="stage" hidden>
+      <div class="toolbar">
+        <button id="backBtn" class="btn small" type="button" hidden></button>
+        <div class="seg tools" role="toolbar" aria-label="道具">
+          <button type="button" data-tool="select" title="選択・移動（V）">選択</button>
+          <button type="button" data-tool="rect" title="四角の建物・部屋（R）">四角</button>
+          <button type="button" data-tool="poly" title="多角形（P）：点を順に押し、最初の点を押すかダブルクリック・Enterで完成">多角形</button>
+          <button type="button" data-tool="line" title="線（L）：点を順に押し、最後の点をもう一度押すかEnterで完成">線</button>
+          <button type="button" data-tool="symbol" title="記号（S）">記号</button>
+          <button type="button" data-tool="measure" title="距離をはかる（M）">ものさし</button>
+        </div>
+        <select id="lineKind" class="sel" aria-label="線の種類" hidden></select>
+        <select id="symKind" class="sel" aria-label="記号の種類" hidden></select>
+        <div id="floorTabs" class="seg floors" aria-label="階"></div>
+        <button id="addFloor" class="btn small" type="button" title="階を追加">＋ 階</button>
+        <span class="spacer"></span>
+        <label class="snap">吸着
+          <select id="snapSel" class="sel" aria-label="方眼への吸着">
+            <option value="0">なし</option>
+            <option value="0.5">½マス</option>
+            <option value="1">1マス</option>
+          </select>
+        </label>
+        <div class="seg">
+          <button id="undoBtn" type="button" title="元に戻す（Ctrl+Z）">↶</button>
+          <button id="redoBtn" type="button" title="やり直す（Ctrl+Shift+Z）">↷</button>
+        </div>
+        <div class="seg">
+          <button id="zoomOut" type="button" title="縮小">−</button>
+          <button id="zoomFit" type="button" title="地図全体を表示">全体</button>
+          <button id="zoomIn" type="button" title="拡大">＋</button>
+        </div>
+        <button id="mapSettings" class="btn small" type="button">地図の設定</button>
+      </div>
+      <div class="canvas-wrap" id="canvasWrap">
+        <svg id="canvas" class="canvas" xmlns="http://www.w3.org/2000/svg" aria-label="配置図"></svg>
+        <div id="hint" class="hint"></div>
+      </div>
+    </div>
+  </main>
+
+  <aside id="panel" class="panel" aria-label="詳細"></aside>
+</div>
+
+<!-- 作品の設定 -->
+<dialog id="workDialog" class="dialog">
+  <form method="dialog" id="workForm">
+    <h3 id="workTitle">作品の設定</h3>
+    <label class="fld"><span>作品名</span><input id="workName" type="text" required autocomplete="off"></label>
+    <label class="fld"><span>連動する年表</span><select id="workTimeline"></select></label>
+    <p class="note">年表ツールに登録した場所を一覧に出し、地図の場所を押すと、その場所のできごとを表示します。</p>
+    <div class="dialog-actions">
+      <button id="workDelete" class="btn danger left" type="button">この作品を削除</button>
+      <button value="cancel" class="btn" formnovalidate>キャンセル</button>
+      <button value="ok" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 地図の設定 -->
+<dialog id="mapDialog" class="dialog">
+  <form method="dialog" id="mapForm">
+    <h3 id="mapTitle">地図の設定</h3>
+    <label class="fld"><span>地図の名前</span><input id="mapName" type="text" required autocomplete="off" placeholder="例：城全体図"></label>
+    <div class="fld-row">
+      <label class="fld"><span>横（マス）</span><input id="mapW" type="number" min="5" max="500" step="1" required></label>
+      <label class="fld"><span>縦（マス）</span><input id="mapH" type="number" min="5" max="500" step="1" required></label>
+      <label class="fld"><span>1マス＝（m）</span><input id="mapScale" type="number" min="0.01" step="any" required></label>
+    </div>
+    <p id="mapSizeNote" class="note"></p>
+    <div class="fld">
+      <span>階（下の階から順に。描く階は地図の上のボタンで切り替えます）</span>
+      <div id="floorRows" class="floor-rows"></div>
+      <button id="floorAddRow" class="btn small" type="button">＋ 階を追加</button>
+    </div>
+    <div class="dialog-actions">
+      <button id="mapDelete" class="btn danger left" type="button">この地図を削除</button>
+      <button value="cancel" class="btn" formnovalidate>キャンセル</button>
+      <button value="ok" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 読み込み -->
+<dialog id="importDialog" class="dialog">
+  <form method="dialog">
+    <h3>配置図の読み込み</h3>
+    <p id="importMsg"></p>
+    <div class="dialog-actions">
+      <button value="cancel" class="btn">キャンセル</button>
+      <button value="add" id="importAdd" class="btn">別の作品として追加</button>
+      <button value="replace" id="importReplace" class="btn primary">上書きする</button>
+    </div>
+  </form>
+</dialog>
+
+<datalist id="placeDl"></datalist>
+
+<script src="map.js"></script>
+</body>
+</html>
