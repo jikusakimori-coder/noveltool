@@ -1,0 +1,52 @@
+{
+  "format": "noveltool-map",
+  "version": 1,
+  "work": {
+    "id": "sample-map",
+    "title": "記入例の配置図",
+    "timelineTitle": "記入例の年表"
+  },
+  "maps": [
+    {
+      "id": "castle",
+      "name": "城全体図",
+      "width": 48,
+      "height": 36,
+      "scale": 4,
+      "floors": [{ "id": "f1", "name": "地上" }],
+      "shapes": [
+        { "type": "line", "kind": "moat", "points": [[4, 4], [44, 4], [44, 32], [4, 32], [4, 4]], "name": "外堀" },
+        { "type": "line", "kind": "wall", "points": [[7, 7], [41, 7], [41, 29], [7, 29], [7, 7]], "name": "石垣" },
+        { "type": "line", "kind": "road", "points": [[24, 36], [24, 29], [24, 23]], "name": "大手道" },
+        { "type": "line", "kind": "river", "points": [[0, 2], [10, 1], [22, 1.5], [34, 0.5], [48, 1]], "name": "川" },
+        { "type": "symbol", "kind": "gate", "x": 24, "y": 29, "size": 2, "name": "大手門", "place": "駅" },
+        { "id": "omote", "type": "rect", "x": 12, "y": 10, "w": 14, "h": 9, "color": "#ead9b5", "name": "表御殿", "memo": "中の間取りは「表御殿の中」へ", "link": "omote-in", "place": "商店" },
+        { "type": "rect", "x": 30, "y": 10, "w": 7, "h": 7, "rot": 15, "color": "#d6d3cc", "name": "天守" },
+        { "type": "poly", "points": [[12, 22], [20, 21], [21, 27], [13, 27]], "color": "#d9e8c6", "name": "庭園" },
+        { "type": "symbol", "kind": "well", "x": 33, "y": 23, "size": 1.5, "name": "井戸" },
+        { "type": "symbol", "kind": "tree", "x": 14, "y": 25.8, "size": 1.2 },
+        { "type": "symbol", "kind": "tree", "x": 19, "y": 25.6, "size": 1.2 },
+        { "type": "pin", "x": 36, "y": 26, "place": "下宿", "memo": "年表の場所は、ピンでも置けます" }
+      ]
+    },
+    {
+      "id": "omote-in",
+      "name": "表御殿の中",
+      "width": 30,
+      "height": 20,
+      "scale": 1,
+      "floors": [{ "id": "f1", "name": "1階" }, { "id": "f2", "name": "2階" }],
+      "shapes": [
+        { "type": "rect", "floor": "f1", "x": 2, "y": 2, "w": 10, "h": 8, "color": "#ead9b5", "name": "大広間" },
+        { "type": "rect", "floor": "f1", "x": 12, "y": 2, "w": 6, "h": 8, "color": "#cfe0ec", "name": "控えの間" },
+        { "type": "rect", "floor": "f1", "x": 2, "y": 10, "w": 26, "h": 3, "color": "#d6d3cc", "name": "廊下" },
+        { "type": "rect", "floor": "f1", "x": 18, "y": 2, "w": 10, "h": 8, "color": "#efcfc8", "name": "書院" },
+        { "type": "symbol", "floor": "f1", "kind": "door", "x": 7, "y": 10, "size": 1.5, "rot": 180 },
+        { "type": "symbol", "floor": "f1", "kind": "stairs", "x": 26, "y": 15, "size": 2, "name": "階段" },
+        { "type": "line", "floor": "f1", "kind": "wall", "points": [[2, 13], [2, 18], [28, 18], [28, 13]] },
+        { "type": "rect", "floor": "f2", "x": 18, "y": 2, "w": 10, "h": 8, "color": "#ddd2ea", "name": "物見の間" },
+        { "type": "symbol", "floor": "f2", "kind": "stairs", "x": 26, "y": 15, "size": 2, "name": "階段" }
+      ]
+    }
+  ]
+}
