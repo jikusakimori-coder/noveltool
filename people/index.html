@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1a18" media="(prefers-color-scheme: dark)">
+<title>人物事典</title>
+<link rel="stylesheet" href="people.css">
+</head>
+<body data-tab="list">
+
+<header class="topbar">
+  <a class="back" href="../" title="執筆ツールへ">← 執筆ツール</a>
+  <a class="back" href="../timeline/" title="年表ツールへ">年表</a>
+  <a class="back" href="../map/" title="配置図ツールへ">配置図</a>
+  <a class="back" href="../clues/" title="伏線管理へ">伏線</a>
+  <h1 class="app-name">人物事典</h1>
+  <select id="workSel" class="work-sel" aria-label="作品の切り替え"></select>
+  <button id="newWork" class="btn small" type="button">＋ 新しい作品</button>
+  <button id="workSettings" class="btn small" type="button">作品の設定</button>
+  <span class="spacer"></span>
+  <button id="exportJson" class="btn small" type="button" title="この作品の人物事典をJSONで書き出し">JSON書き出し</button>
+  <button id="importBtn" class="btn small" type="button" title="書き出したJSONを読み込んで復元">読み込み</button>
+  <input id="importFile" type="file" accept=".json,application/json" hidden>
+</header>
+
+<div class="toolbar" id="toolbar">
+  <div class="seg" role="tablist" aria-label="表示">
+    <button type="button" data-tab="list">人物一覧</button>
+    <button type="button" data-tab="calls">呼び方表</button>
+  </div>
+  <input id="search" class="search" type="search" placeholder="人物を検索（名前・読み・別名など）" aria-label="人物を検索" autocomplete="off">
+  <select id="groupSel" class="sel" aria-label="所属で絞り込み"></select>
+  <div id="partBox" class="part-box">
+    <span class="lbl">部・ルート</span>
+    <div id="partSeg" class="seg scroll" aria-label="部・ルートの切り替え"></div>
+  </div>
+  <span class="spacer"></span>
+  <button id="addPerson" class="btn primary small" type="button">＋ 人物</button>
+</div>
+
+<main class="main">
+  <section id="empty" class="empty" hidden>
+    <p id="emptyMsg"></p>
+    <button id="emptyAction" class="btn primary" type="button"></button>
+  </section>
+
+  <div id="listView" class="list-view">
+    <ul id="personList" class="person-list" aria-label="人物の一覧"></ul>
+    <section id="detail" class="detail" aria-label="人物の詳細"></section>
+  </div>
+
+  <div id="callsView" class="calls-view">
+    <p id="callsNote" class="note calls-note"></p>
+    <div id="callsWrap" class="calls-wrap" tabindex="0"></div>
+  </div>
+</main>
+
+<!-- 呼び方の入力 -->
+<dialog id="callDialog" class="dialog">
+  <form method="dialog" id="callForm">
+    <h3 id="callTitle"></h3>
+    <p id="callBase" class="note"></p>
+    <label class="fld"><span>呼び方</span><input id="callText" type="text" autocomplete="off" placeholder="例：〇〇さん"></label>
+    <label class="fld"><span>補足（場面で変わるときなど）</span><textarea id="callNote" rows="3" placeholder="例：二人きりのときは呼び捨て"></textarea></label>
+    <div class="dialog-actions">
+      <button id="callReset" class="btn" type="button">基本と同じにする</button>
+      <button id="callClear" class="btn danger push" type="button">消す</button>
+      <button value="cancel" class="btn" formnovalidate>キャンセル</button>
+      <button value="ok" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 作品の設定 -->
+<dialog id="workDialog" class="dialog wide">
+  <form method="dialog" id="workForm">
+    <h3 id="workTitle">作品の設定</h3>
+    <label class="fld"><span>作品名</span><input id="workName" type="text" required autocomplete="off"></label>
+    <div class="fld">
+      <span>人物の項目（「名前」はいつもあります）</span>
+      <div id="fieldRows" class="rows"></div>
+      <button id="fieldAdd" class="btn small" type="button">＋ 項目を追加</button>
+      <p class="note">「長文」は複数行で書ける欄になります。「絞り込み」にした項目は、上の絞り込み欄で選べます（「、」で区切ると複数の値として扱います）。</p>
+    </div>
+    <div class="fld">
+      <span>部・ルート（呼び方が部やルートで変わるときに使います）</span>
+      <div id="partRows" class="rows"></div>
+      <div class="btn-row">
+        <button id="partAdd" class="btn small" type="button">＋ 部・ルートを追加</button>
+        <button id="partFromTimeline" class="btn small" type="button" title="年表ツールの年表から部の名前を読み込み">年表から部を読み込む</button>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button id="workDelete" class="btn danger push" type="button">この作品を削除</button>
+      <button value="cancel" class="btn" formnovalidate>キャンセル</button>
+      <button value="ok" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 年表から部を選ぶ -->
+<dialog id="tlDialog" class="dialog">
+  <form method="dialog">
+    <h3>年表から部を読み込む</h3>
+    <label class="fld"><span>年表</span><select id="tlSel"></select></label>
+    <p id="tlNote" class="note"></p>
+    <div class="dialog-actions">
+      <button value="cancel" class="btn">キャンセル</button>
+      <button value="ok" id="tlOk" class="btn primary">読み込む</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 読み込み -->
+<dialog id="importDialog" class="dialog">
+  <form method="dialog">
+    <h3>人物事典の読み込み</h3>
+    <p id="importMsg"></p>
+    <div class="dialog-actions">
+      <button value="cancel" class="btn">キャンセル</button>
+      <button value="add" id="importAdd" class="btn">別の作品として追加</button>
+      <button value="replace" id="importReplace" class="btn primary">上書きする</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="people.js"></script>
+</body>
+</html>

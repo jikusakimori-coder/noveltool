@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1a18" media="(prefers-color-scheme: dark)">
+<title>伏線管理</title>
+<link rel="stylesheet" href="clues.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="back" href="../" title="執筆ツールへ">← 執筆ツール</a>
+  <a class="back" href="../timeline/" title="年表ツールへ">年表</a>
+  <a class="back" href="../map/" title="配置図ツールへ">配置図</a>
+  <a class="back" href="../people/" title="人物事典へ">人物事典</a>
+  <h1 class="app-name">伏線管理</h1>
+  <select id="workSel" class="work-sel" aria-label="作品の切り替え"></select>
+  <button id="newWork" class="btn small" type="button">＋ 新しい作品</button>
+  <button id="workSettings" class="btn small" type="button">作品の設定</button>
+  <span class="spacer"></span>
+  <button id="exportJson" class="btn small" type="button" title="この作品の伏線をJSONで書き出し">JSON書き出し</button>
+  <button id="importBtn" class="btn small" type="button" title="書き出したJSONを読み込んで復元">読み込み</button>
+  <input id="importFile" type="file" accept=".json,application/json" hidden>
+</header>
+
+<div class="toolbar" id="toolbar">
+  <div id="statusSeg" class="seg" aria-label="状態で絞り込み"></div>
+  <select id="kindSel" class="sel" aria-label="種類で絞り込み"></select>
+  <select id="partSel" class="sel" aria-label="部で絞り込み"></select>
+  <select id="personSel" class="sel" aria-label="人物で絞り込み"></select>
+  <select id="epSel" class="sel" aria-label="話で絞り込み"></select>
+  <input id="search" class="search" type="search" placeholder="内容・メモを検索" aria-label="検索" autocomplete="off">
+  <button id="clearFilter" class="btn small" type="button">条件を戻す</button>
+  <span class="spacer"></span>
+  <button id="addClue" class="btn primary small" type="button">＋ 伏線・手がかり</button>
+</div>
+
+<main class="main">
+  <section id="empty" class="empty" hidden>
+    <p id="emptyMsg"></p>
+    <button id="emptyAction" class="btn primary" type="button"></button>
+  </section>
+  <div id="listWrap" class="list-wrap">
+    <p id="summary" class="summary"></p>
+    <div id="list"></div>
+  </div>
+</main>
+
+<!-- 伏線・手がかりの入力 -->
+<dialog id="clueDialog" class="dialog wide">
+  <form method="dialog" id="clueForm">
+    <h3 id="clueTitle">伏線・手がかり</h3>
+    <label class="fld"><span>内容</span><textarea id="cText" rows="3" required></textarea></label>
+    <div class="fld-row">
+      <div class="fld"><span>種類</span><div id="cKind" class="seg radio"></div></div>
+      <div class="fld"><span>状態</span><div id="cStatus" class="seg radio"></div></div>
+    </div>
+    <div class="fld-row three">
+      <label class="fld"><span>張った話</span><input id="cPlanted" type="text" list="epDl" autocomplete="off"></label>
+      <label class="fld"><span>回収予定の話</span><input id="cPlan" type="text" list="epDl" autocomplete="off"></label>
+      <label class="fld"><span>回収した話</span><input id="cPayoff" type="text" list="epDl" autocomplete="off"></label>
+    </div>
+    <div class="fld"><span>読者に見せた部（複数可）</span><div id="cParts" class="checks"></div></div>
+    <div class="fld">
+      <span>関わる人物（Enter で追加）</span>
+      <div class="tokens" id="cPeopleBox"><span id="cPeopleChips"></span><input id="cPeopleIn" type="text" list="peopleDl" autocomplete="off" placeholder="名前"></div>
+      <div id="cPeopleSug" class="sug"></div>
+    </div>
+    <label class="fld"><span>メモ</span><textarea id="cMemo" rows="3"></textarea></label>
+    <datalist id="epDl"></datalist>
+    <datalist id="peopleDl"></datalist>
+    <div class="dialog-actions">
+      <button id="clueDelete" class="btn danger push" type="button">削除</button>
+      <button value="cancel" class="btn" formnovalidate>キャンセル</button>
+      <button value="ok" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 作品の設定 -->
+<dialog id="workDialog" class="dialog wide">
+  <form method="dialog" id="workForm">
+    <h3 id="workTitle">作品の設定</h3>
+    <label class="fld"><span>作品名</span><input id="workName" type="text" required autocomplete="off"></label>
+    <p class="note">ほかのツールの作品と連動させると、人物名や話のタイトルを候補に出せます（ほかのツールのデータは読むだけです）。</p>
+    <div class="fld-row three">
+      <label class="fld"><span>人物事典</span><select id="linkPeople"></select></label>
+      <label class="fld"><span>年表</span><select id="linkTimeline"></select></label>
+      <label class="fld"><span>執筆ツールの作品（話の候補）</span><select id="linkNovel"></select></label>
+    </div>
+    <div class="fld">
+      <span>部（「読者に見せた部」で使います）</span>
+      <div id="partRows" class="rows"></div>
+      <div class="btn-row">
+        <button id="partAdd" class="btn small" type="button">＋ 部を追加</button>
+        <button id="partFromTimeline" class="btn small" type="button">選んだ年表から部を読み込む</button>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button id="workDelete" class="btn danger push" type="button">この作品を削除</button>
+      <button value="cancel" class="btn" formnovalidate>キャンセル</button>
+      <button value="ok" class="btn primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 読み込み -->
+<dialog id="importDialog" class="dialog">
+  <form method="dialog">
+    <h3>伏線の読み込み</h3>
+    <p id="importMsg"></p>
+    <div class="dialog-actions">
+      <button value="cancel" class="btn">キャンセル</button>
+      <button value="add" id="importAdd" class="btn">別の作品として追加</button>
+      <button value="replace" id="importReplace" class="btn primary">上書きする</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="clues.js"></script>
+</body>
+</html>
