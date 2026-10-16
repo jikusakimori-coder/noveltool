@@ -20,12 +20,12 @@
   <nav id="workTabs" class="work-tabs" aria-label="作品の切り替え"></nav>
   <div class="counts" id="counts" aria-live="polite"></div>
   <span class="save-status" id="saveStatus"></span>
-  <button id="refsToggle" class="btn small only-wide" type="button" aria-pressed="true" title="資料パネルの表示／非表示">資料</button>
+  <button id="refsToggle" class="btn small only-wide" type="button" aria-pressed="true" title="資料・表記チェックのパネルを表示／非表示">資料・チェック</button>
 </header>
 
 <nav class="mtabs" aria-label="表示の切り替え">
   <button type="button" data-mtab="write">原稿</button>
-  <button type="button" data-mtab="refs">資料</button>
+  <button type="button" data-mtab="refs">資料・チェック</button>
 </nav>
 
 <div class="layout">
@@ -115,14 +115,20 @@
 
   <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="原稿と資料の境目（ドラッグで幅を変更）" tabindex="0"></div>
 
-  <section id="refs" class="refs" aria-label="資料">
+  <section id="refs" class="refs" aria-label="資料・表記チェック">
+    <div class="side-tabs" role="tablist">
+      <button type="button" role="tab" data-side="refs">資料</button>
+      <button type="button" role="tab" data-side="check">表記チェック</button>
+      <span class="spacer"></span>
+      <button id="refsClose" class="icon-btn only-wide" type="button" title="パネルを隠す" aria-label="パネルを隠す">✕</button>
+    </div>
+    <div id="refsPane" class="side-pane">
     <div class="refs-head">
       <button id="refListBtn" class="refs-current" type="button" aria-expanded="false" title="資料の一覧">
         <span id="refName" class="name">資料</span><span class="caret">▾</span>
       </button>
       <button id="refTocBtn" class="btn small" type="button" aria-pressed="false">目次</button>
       <button id="refAdd" class="btn small" type="button" title="MDファイルを読み込み（複数選択可）">＋ 読み込み</button>
-      <button id="refsClose" class="icon-btn only-wide" type="button" title="資料パネルを隠す" aria-label="資料パネルを隠す">✕</button>
       <input id="refFile" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple hidden>
       <input id="refFolder" type="file" webkitdirectory multiple hidden>
     </div>
@@ -130,6 +136,17 @@
     <nav id="refToc" class="ref-toc" hidden aria-label="目次"></nav>
     <div id="refBody" class="ref-body md" tabindex="0"></div>
     <div class="drop-hint">ここにMDファイルやフォルダをドロップして読み込み</div>
+    </div>
+    <div id="checkPane" class="side-pane" hidden>
+      <div class="chk-nav">
+        <div class="seg">
+          <button type="button" data-cview="run">チェック</button>
+          <button type="button" data-cview="dict">用語辞書</button>
+          <button type="button" data-cview="rules">設定</button>
+        </div>
+      </div>
+      <div id="chkBody" class="chk-body"></div>
+    </div>
   </section>
   </div>
 </div>
@@ -184,5 +201,6 @@
 <script src="zip.js"></script>
 <script src="app.js"></script>
 <script src="refs.js"></script>
+<script src="check.js"></script>
 </body>
 </html>

@@ -329,7 +329,6 @@ body.resizing iframe, body.resizing .editor, body.resizing .preview { pointer-ev
   flex-direction: column;
   background: var(--panel);
 }
-.refs.dropping { outline: 2px dashed var(--accent); outline-offset: -6px; }
 body[data-refs="closed"] .refs, body[data-refs="closed"] .splitter { display: none; }
 
 .refs-head { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
@@ -451,8 +450,7 @@ body.loading .layout, body.loading .work-tabs { visibility: hidden; }
   color: var(--accent); font-weight: 600; padding: 16px;
   pointer-events: none; z-index: 5;
 }
-.refs.dropping { outline: none; }
-.refs.dropping .drop-hint { display: flex; }
+.side-pane.dropping .drop-hint { display: flex; }
 
 /* 読み込みダイアログ */
 .import-list { list-style: none; margin: 8px 0; padding: 0; max-height: 40vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
@@ -490,6 +488,96 @@ body.loading .layout, body.loading .work-tabs { visibility: hidden; }
 .choice span { display: flex; flex-direction: column; gap: 2px; }
 .choice small { color: var(--muted); font-size: 12px; line-height: 1.6; }
 .import-warn { padding: 8px 10px; font-size: 12px; color: var(--danger); }
+
+
+/* 資料・表記チェックのタブ */
+.side-tabs { display: flex; align-items: flex-end; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--line); flex: none; }
+.side-tabs [data-side] {
+  border: 1px solid transparent; border-bottom: 0; background: transparent; color: var(--muted);
+  padding: 7px 14px; border-radius: 8px 8px 0 0; font-size: 14px; margin-bottom: -1px;
+}
+.side-tabs [data-side].on { color: var(--text); font-weight: 600; background: var(--panel); border-color: var(--line); }
+.side-tabs .spacer { flex: 1; }
+.side-tabs .icon-btn { margin-bottom: 4px; }
+.side-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+
+/* 表記チェック */
+.chk-nav { padding: 8px 10px; border-bottom: 1px solid var(--line); flex: none; }
+.chk-body { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; padding-bottom: max(24px, env(safe-area-inset-bottom)); font-size: 14px; }
+.chk-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.chk-bar label { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.chk-bar select, .chk-bar input[type="search"], .people-link select {
+  border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 4px 8px; min-height: 32px;
+}
+.chk-bar input[type="search"] { flex: 1; min-width: 8em; }
+.chk-empty { color: var(--muted); text-align: center; padding: 24px 8px; line-height: 1.8; }
+.chk-summary { margin: 10px 0 6px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.chk-summary small { color: var(--muted); font-size: 12px; }
+.chk-undo { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 6px 10px; margin: 6px 0; border-radius: 8px; background: var(--accent-soft); font-size: 13px; }
+.chk-sec { margin-top: 12px; }
+.chk-sec h4 { margin: 0 0 6px; font-size: 13px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.chk-sec h4 span { background: var(--panel-2); color: var(--text); border-radius: 10px; padding: 0 8px; font-size: 12px; }
+.chk-group { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 6px; background: var(--panel); }
+.chk-group.replacing { border-color: var(--accent); }
+.chk-ghead { display: flex; align-items: center; gap: 4px; padding: 4px 8px 4px 2px; flex-wrap: wrap; }
+.chk-ghead .chev-btn { transform: none; }
+.chk-ghead .chev-btn[aria-expanded="true"] { transform: rotate(90deg); }
+.chk-label { flex: 1; min-width: 8em; font-weight: 600; overflow-wrap: anywhere; }
+.chk-label small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+.chk-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.chk-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+.chk-occ { list-style: none; margin: 0; padding: 0 6px 6px; }
+.chk-occ li { display: flex; align-items: center; gap: 4px; }
+.occ, .rep-item {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; text-align: left;
+  border: 0; background: transparent; border-radius: 6px; padding: 5px 8px; font-size: 13px;
+}
+.occ:hover { background: var(--panel-2); }
+.rep-item { flex-direction: row; align-items: flex-start; gap: 8px; cursor: pointer; }
+.rep-item input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.rep-item > span { display: flex; flex-direction: column; min-width: 0; }
+.occ small, .rep-item small { color: var(--muted); font-size: 11px; }
+.ctx { overflow-wrap: anywhere; line-height: 1.6; }
+.ctx mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+.ctx del { color: var(--danger); }
+.ctx ins { text-decoration: none; background: var(--accent-soft); color: var(--accent); font-weight: 600; border-radius: 3px; padding: 0 1px; }
+.rep-note { margin: 0 10px 4px; }
+.rep-bar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 6px 10px 10px; border-top: 1px solid var(--line); }
+.rep-bar .spacer { flex: 1; }
+.chk-search { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 10px; }
+.chk-search summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.chk-search form { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-top: 8px; }
+.chk-search label, .term-form label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); flex: 1; min-width: 7em; }
+.chk-search input, .term-form input, .term-form textarea {
+  border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 8px; padding: 6px 8px; font-size: 14px;
+}
+.term-form { border: 1px solid var(--accent); border-radius: 10px; padding: 10px 12px; margin: 8px 0; display: grid; gap: 8px; background: var(--panel); }
+.term-form h4 { margin: 0; font-size: 14px; }
+.term-form textarea { resize: vertical; font-family: inherit; }
+.term-form .dialog-actions { margin-top: 0; }
+.term-list { list-style: none; margin: 8px 0; padding: 0; }
+.term { padding: 8px 10px; border-bottom: 1px solid var(--line); display: grid; gap: 2px; }
+.term-main b { font-size: 15px; }
+.term-ruby { color: var(--muted); font-size: 13px; margin-left: 2px; }
+.term-sub { font-size: 12px; color: var(--text); }
+.term-memo { font-size: 12px; color: var(--muted); white-space: pre-wrap; }
+.term-acts { display: flex; gap: 4px; }
+.term-acts button { border: 0; background: transparent; color: var(--muted); font-size: 12px; padding: 2px 6px; border-radius: 6px; }
+.term-acts button:hover { background: var(--panel-2); color: var(--text); }
+.term-acts button.danger:hover { color: var(--danger); }
+.dict-h { margin: 18px 0 6px; font-size: 13px; color: var(--muted); }
+.people-link { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 13px; margin: 4px 0; }
+.opt { display: flex; gap: 8px; align-items: flex-start; padding: 4px 0; font-size: 13px; }
+.opt input { margin-top: 2px; accent-color: var(--accent); }
+.opt small { display: block; color: var(--muted); font-size: 12px; }
+.rule-list { list-style: none; margin: 0; padding: 0; }
+.rule { border-bottom: 1px solid var(--line); padding: 4px 0; }
+.rule-forms { display: flex; gap: 12px; flex-wrap: wrap; padding: 0 0 6px 26px; font-size: 13px; color: var(--muted); }
+.rule-forms label { color: var(--text); display: inline-flex; gap: 4px; align-items: center; }
+.rule-forms input { accent-color: var(--accent); }
+.ignore-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); margin: 6px 0; }
+.chip { display: inline-flex; align-items: center; gap: 2px; background: var(--panel-2); color: var(--text); border-radius: 12px; padding: 2px 4px 2px 10px; }
+.chip button { border: 0; background: transparent; color: var(--muted); width: 22px; height: 22px; border-radius: 50%; }
 
 /* ---------- ダイアログ ---------- */
 .dialog {
