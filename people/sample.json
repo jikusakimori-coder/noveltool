@@ -1,0 +1,43 @@
+{
+  "format": "noveltool-people",
+  "version": 1,
+  "work": { "id": "sample-people", "title": "記入例の人物事典" },
+  "fields": [
+    { "id": "yomi", "label": "読み" },
+    { "id": "alias", "label": "別名・愛称" },
+    { "id": "age", "label": "年齢" },
+    { "id": "affiliation", "label": "所属・立場", "filter": true },
+    { "id": "appearance", "label": "外見", "type": "long" },
+    { "id": "personality", "label": "性格", "type": "long" },
+    { "id": "firstPerson", "label": "一人称" },
+    { "id": "tone", "label": "口調の特徴", "type": "long" },
+    { "id": "catchphrase", "label": "口癖" },
+    { "id": "memo", "label": "メモ", "type": "long" }
+  ],
+  "parts": [
+    { "id": "p1", "name": "第一部" },
+    { "id": "p2", "name": "第二部" }
+  ],
+  "people": [
+    {
+      "id": "a", "name": "人物A",
+      "values": { "yomi": "じんぶつえー", "age": "17", "affiliation": "商店、町内会", "firstPerson": "わたし", "tone": "ていねい語。驚くと語尾が上がる", "memo": "記入例です" }
+    },
+    {
+      "id": "b", "name": "人物B",
+      "values": { "yomi": "じんぶつびー", "alias": "Bさん", "age": "34", "affiliation": "商店", "firstPerson": "おれ", "catchphrase": "まあ、いいか" }
+    },
+    {
+      "id": "c", "name": "人物C",
+      "values": { "yomi": "じんぶつしー", "affiliation": "下宿", "firstPerson": "僕" }
+    }
+  ],
+  "calls": [
+    { "from": "a", "to": "b", "call": "Bさん" },
+    { "from": "a", "to": "b", "part": "第二部", "call": "Bちゃん", "note": "第二部では親しくなっている" },
+    { "from": "b", "to": "a", "call": "おまえ", "note": "人前では名字で呼ぶ" },
+    { "from": "a", "to": "c", "call": "Cくん" },
+    { "from": "c", "to": "a", "call": "Aさん" },
+    { "from": "人物C", "to": "人物B", "call": "店長" }
+  ]
+}
