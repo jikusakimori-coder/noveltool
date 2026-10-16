@@ -8,7 +8,7 @@
 
 const DB = (() => {
   const NAME = 'noveltool';
-  const VERSION = 2; // 2: 章（chapters）を追加
+  const VERSION = 3; // 2: 章（chapters）を追加 / 3: 用語辞書（terms）を追加
   const LEGACY_DATA_KEY = 'noveltool.data.v1'; // 旧版（localStorage）の原稿
   const LEGACY_UI_KEY = 'noveltool.ui.v1';
   const LEGACY_REFS_DB = 'noveltool-refs'; // 旧版の資料
@@ -41,6 +41,7 @@ const DB = (() => {
           }
           // 既存の話は chapterId を持たない＝「章なし」としてそのまま引き継ぐ
           if (e.oldVersion < 2) db.createObjectStore('chapters', { keyPath: 'id' }).createIndex('workId', 'workId');
+          if (e.oldVersion < 3) db.createObjectStore('terms', { keyPath: 'id' }).createIndex('workId', 'workId');
         };
         r.onsuccess = () => {
           const db = r.result;
@@ -189,8 +190,10 @@ const DB = (() => {
   }
 
   function deleteWork(id) {
-    return run(['works', 'chapters', 'episodes', 'refs'], 'readwrite', async (s) => {
+    return run(['works', 'chapters', 'episodes', 'refs', 'terms', 'meta'], 'readwrite', async (s) => {
       s.works.delete(id);
+      s.meta.delete('check:' + id);
+      for (const k of await req(s.terms.index('workId').getAllKeys(id))) s.terms.delete(k);
       for (const k of await req(s.chapters.index('workId').getAllKeys(id))) s.chapters.delete(k);
       for (const k of await req(s.episodes.index('workId').getAllKeys(id))) s.episodes.delete(k);
       for (const k of await req(s.refs.index('workId').getAllKeys(id))) s.refs.delete(k);
@@ -324,6 +327,29 @@ const DB = (() => {
     });
   }
 
+  /* ---------- 用語辞書・表記チェックの設定 ---------- */
+
+  async function terms(workId) {
+    return run('terms', 'readonly', (s) => req(s.terms.index('workId').getAll(workId)));
+  }
+
+  function putTerm(t) {
+    return run('terms', 'readwrite', (s) => { s.terms.put({ ...t }); });
+  }
+
+  function deleteTerm(id) {
+    return run('terms', 'readwrite', (s) => { s.terms.delete(id); });
+  }
+
+  async function checkSettings(workId) {
+    const rec = await run('meta', 'readonly', (s) => req(s.meta.get('check:' + workId)));
+    return rec ? rec.value : null;
+  }
+
+  function putCheckSettings(workId, value) {
+    return run('meta', 'readwrite', (s) => { s.meta.put({ key: 'check:' + workId, value }); });
+  }
+
   /* ---------- 作品単位の書き出し・読み込み ---------- */
 
   // 作品の本文（章と話）を読み出す。資料は含めない。
@@ -400,6 +426,7 @@ const DB = (() => {
     uid, init, works, putWork, createWork, deleteWork,
     episodes, addEpisode, saveEpisode, setPlacements, deleteEpisode, getEpisode,
     chapters, putChapter, setChapterOrders, deleteChapter,
+    terms, putTerm, deleteTerm, checkSettings, putCheckSettings,
     refs, upsertRefs, deleteRefs, deleteAllRefs,
     exportWork, importWork, notify, onMessage, onVersionChange, onBlocked, TAB_ID,
   };

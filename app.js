@@ -11,7 +11,7 @@
 const UI_KEY = 'noveltool.ui.v2';
 const LEGACY_UI_KEY = 'noveltool.ui.v1';
 // 表示の好み（すべてのタブで共通）
-const PREF_KEYS = ['view', 'dir', 'pvSize', 'refsOpen', 'refW', 'mtab', 'tocOpen', 'exportFormat', 'collapsed'];
+const PREF_KEYS = ['view', 'dir', 'pvSize', 'refsOpen', 'refW', 'mtab', 'tocOpen', 'exportFormat', 'collapsed', 'sideTab'];
 
 // 書き出しファイルの書式（作品全体を1つのテキストにしたもの）
 const TEXT_HEADER = '#noveltool v3';
@@ -57,7 +57,7 @@ let chapterMenu = null;  // メニューを開いている章
 function loadUI() {
   const def = {
     view: 'edit', dir: 'h', pvSize: 17, refsOpen: true, refW: 420, mtab: 'write', tocOpen: false,
-    exportFormat: 'zip', collapsed: {}, lastWork: null, lastEp: {}, lastRef: {},
+    exportFormat: 'zip', collapsed: {}, sideTab: 'refs', lastWork: null, lastEp: {}, lastRef: {},
   };
   let cur = null;
   try { cur = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); } catch (e) { /* noop */ }
@@ -551,6 +551,7 @@ async function openWork(id, { push = false } = {}) {
   acquireLock(epId);
   saveUI();
   Refs.setWork(workId);
+  Check.setWork(workId);
 }
 
 el.tabs.addEventListener('click', (e) => {
@@ -977,6 +978,7 @@ DB.onMessage(async (msg) => {
     if (msg.t === 'works') await reloadWorks();
     else if ((msg.t === 'episodes' || msg.t === 'chapters') && msg.workId === workId) await refreshStructure();
     else if (msg.t === 'refs' && msg.workId === workId) Refs.reload();
+    else if ((msg.t === 'terms' || msg.t === 'check') && msg.workId === workId) Check.reload();
   } catch (e) { console.error(e); }
 });
 

@@ -8,7 +8,7 @@
 
 const Refs = (() => {
   const R = {
-    panel: $('#refs'), splitter: $('#splitter'), content: $('#content'),
+    panel: $('#refs'), drop: $('#refsPane'), splitter: $('#splitter'), content: $('#content'),
     listBtn: $('#refListBtn'), name: $('#refName'), tocBtn: $('#refTocBtn'),
     list: $('#refList'), toc: $('#refToc'), body: $('#refBody'),
     file: $('#refFile'), folder: $('#refFolder'), toggle: $('#refsToggle'),
@@ -501,15 +501,15 @@ const Refs = (() => {
 
   // ファイルやフォルダを資料パネルにドラッグ＆ドロップして読み込む
   const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
-  R.panel.addEventListener('dragover', (e) => {
+  R.drop.addEventListener('dragover', (e) => {
     if (!hasFiles(e)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
-    R.panel.classList.add('dropping');
+    R.drop.classList.add('dropping');
   });
-  R.panel.addEventListener('dragleave', (e) => { if (!R.panel.contains(e.relatedTarget)) R.panel.classList.remove('dropping'); });
-  R.panel.addEventListener('drop', async (e) => {
-    R.panel.classList.remove('dropping');
+  R.drop.addEventListener('dragleave', (e) => { if (!R.drop.contains(e.relatedTarget)) R.drop.classList.remove('dropping'); });
+  R.drop.addEventListener('drop', async (e) => {
+    R.drop.classList.remove('dropping');
     if (!hasFiles(e)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -645,5 +645,6 @@ const Refs = (() => {
     setWork,
     reload: load,
     count: () => refs.length,
+    layout: renderRefsLayout,
   };
 })();
