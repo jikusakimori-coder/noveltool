@@ -48,16 +48,29 @@ const PeopleSource = (() => {
     return arr.map((x) => (typeof x === 'string' ? x : (x && (x.name || x.text)) || '')).map((x) => x.trim()).filter(Boolean);
   };
 
-  // 項目名が多少違っても読めるようにしておく
-  function normalize(rec) {
+  // 人物事典は項目（読み・別名など）を作品ごとに変えられるので、項目IDか項目名で探す
+  const ALIAS_FIELD = { ids: ['alias', 'aliases'], label: /別名|愛称|通称|あだ名|呼び名/ };
+  const RUBY_FIELD = { ids: ['yomi', 'ruby', 'reading'], label: /読み|よみ|ルビ|ふりがな|フリガナ/ };
+  const VARIANT_FIELD = { ids: ['variants'], label: /誤記|表記ゆれ/ };
+  function fieldIds(work, spec) {
+    const fields = work && Array.isArray(work.fields) ? work.fields : [];
+    const ids = fields.filter((f) => spec.ids.includes(f.id) || spec.label.test(String(f.label || ''))).map((f) => f.id);
+    return [...new Set([...spec.ids.filter((id) => !fields.length || fields.some((f) => f.id === id)), ...ids])];
+  }
+  const fromValues = (rec, ids) => ids.flatMap((id) => list(rec.values && rec.values[id]));
+
+  function normalize(rec, work) {
     const name = String(pick(rec, ['name', '名前', 'fullName', 'title']) || '').trim();
+    const aliases = [...list(pick(rec, ['aliases', 'alias', '別名', 'otherNames', 'nicknames'])), ...fromValues(rec, fieldIds(work, ALIAS_FIELD))];
+    const ruby = String(pick(rec, ['ruby', 'reading', 'yomi', 'kana', '読み', 'ルビ']) || fromValues(rec, fieldIds(work, RUBY_FIELD))[0] || '').trim();
+    const variants = [...list(pick(rec, ['variants', 'ゆれ', 'misspellings'])), ...fromValues(rec, fieldIds(work, VARIANT_FIELD))];
     return {
       id: rec.id,
       workId: pick(rec, ['workId', 'work']) || null,
       name,
-      aliases: list(pick(rec, ['aliases', 'alias', '別名', 'otherNames', 'nicknames'])).filter((a) => a !== name),
-      ruby: String(pick(rec, ['ruby', 'reading', 'yomi', 'kana', '読み', 'ルビ']) || '').trim(),
-      variants: list(pick(rec, ['variants', 'ゆれ', 'misspellings'])),
+      aliases: [...new Set(aliases)].filter((a) => a !== name),
+      ruby,
+      variants: [...new Set(variants)],
     };
   }
 
@@ -68,7 +81,8 @@ const PeopleSource = (() => {
     try {
       const store = PEOPLE_STORES.find((n) => db.objectStoreNames.contains(n));
       const works = db.objectStoreNames.contains('works') ? await getAll(db, 'works') : [];
-      const people = store ? (await getAll(db, store)).map(normalize).filter((p) => p.name) : [];
+      const byId = new Map(works.map((w) => [w.id, w]));
+      const people = store ? (await getAll(db, store)).map((p) => normalize(p, byId.get(p.workId))).filter((p) => p.name) : [];
       return {
         works: works.map((w) => ({ id: w.id, title: w.title || w.name || '無題' })).sort((a, b) => String(a.title).localeCompare(String(b.title), 'ja')),
         people,
@@ -751,7 +765,7 @@ const Check = (() => {
     // 人物事典
     h += '<h4 class="dict-h">人物事典から（名前・別名）</h4>';
     if (!peopleData) {
-      h += '<p class="note">人物事典が見つかりません。人物事典に登録すると、名前・別名もここで辞書として使われます。</p>';
+      h += '<p class="note">人物事典のデータが見つかりません。<a href="people/" target="_blank" rel="noopener">人物事典</a>に人物を登録すると、名前・別名・読みもここで辞書として使われます。</p>';
     } else {
       if (peopleData.works.length && peopleData.people.some((p) => p.workId)) {
         const w = curWork();
