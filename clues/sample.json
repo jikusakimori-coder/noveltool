@@ -1,0 +1,42 @@
+{
+  "format": "noveltool-clues",
+  "version": 1,
+  "work": {
+    "id": "sample-clues",
+    "title": "記入例の伏線",
+    "peopleTitle": "記入例の人物事典",
+    "timelineTitle": "記入例の年表"
+  },
+  "parts": ["第一部", "第二部", "第三部", "第四部"],
+  "clues": [
+    {
+      "text": "店の看板が一枚だけ新しい",
+      "kind": "伏線",
+      "status": "未回収",
+      "planted": "第1話",
+      "shownParts": ["第一部", "第二部"],
+      "payoffPlan": "第5話",
+      "people": ["人物B"],
+      "memo": "第二部では別の角度から見せる"
+    },
+    {
+      "text": "駅の時刻表への書き込み",
+      "kind": "手がかり",
+      "status": "回収済み",
+      "planted": "第2話",
+      "shownParts": ["第一部"],
+      "payoffPlan": "第4話",
+      "payoff": "第4話",
+      "people": ["人物A", "人物C"]
+    },
+    {
+      "text": "手紙の差出人の書き方",
+      "kind": "ミスリード",
+      "status": "保留",
+      "planted": "第3話",
+      "shownParts": ["第三部"],
+      "people": ["人物C"],
+      "memo": "どこで明かすかは未定"
+    }
+  ]
+}
